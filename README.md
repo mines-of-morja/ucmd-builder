@@ -4,7 +4,8 @@ The system builder of **UnitcellMD**. It prepares molecular liquids, electrolyte
 as spec-conformant system packages: molecules and unit cells in, packed and parameterized
 periodic boxes out. It never runs MD; that is the job of `ucmd-engine`.
 
-**Status:** Phase 0 skeleton. Package layout and checks only.
+**Status:** Phase 0 skeleton. Package layout and checks only. Plan and shared spec:
+[UnitcellMD](https://github.com/mines-of-morja/UnitcellMD).
 
 **Planned** (PLAN.md, track B):
 
@@ -30,4 +31,4 @@ Python ≥ 3.12.
 
 ## License
 
-MIT; see [LICENSE](LICENSE).
+Apache-2.0; see [LICENSE](LICENSE) and [NOTICE](NOTICE).

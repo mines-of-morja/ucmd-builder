@@ -7,8 +7,8 @@ name = "ucmd-builder"
 dynamic = ["version"]
 description = "UnitcellMD system builder: molecules, electrolytes and crystals as spec-conformant system packages"
 readme = "README.md"
-license = "MIT"
-license-files = ["LICENSE"]
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.12"
 classifiers = [
     "Development Status :: 1 - Planning",
