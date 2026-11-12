@@ -31,6 +31,7 @@ ucmd-build build RECIPE -o PACKAGE [--force]   recipe → validated system packa
 ucmd-build compose RECIPE                      composition calculator: counts, box, achieved values
 ucmd-build sources                             installed force-field sources (plug-ins)
 ucmd-build library [--set NAME]                data sets and templates of the `library` source
+ucmd-build xyz PACKAGE -o FILE.xyz             extended XYZ (Å) for OVITO, VMD, Jmol, ase gui
 ucmd-build check PACKAGE                       validate a package (ucmd-spec)
 ```
 

@@ -187,3 +187,15 @@ def test_cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert "exists" in capsys.readouterr().err
     assert main(["sources"]) == 0 and "gromacs-top" in capsys.readouterr().out
     assert main(["library"]) == 0 and "PF6" in capsys.readouterr().out
+
+
+def test_xyz_export(tmp_path: Path) -> None:
+    out, doc = build_and_write(ARGON, tmp_path)
+    assert main(["xyz", str(out), "-o", str(tmp_path / "a.xyz")]) == 0
+    lines = (tmp_path / "a.xyz").read_text().splitlines()
+    assert lines[0] == "108" and len(lines) == 110
+    L = doc["cell_nm"][0][0] * 10
+    assert f'Lattice="{L:.8f} 0.00000000 0.00000000' in lines[1] and 'pbc="T T T"' in lines[1]
+    x = np.load(out / "positions.npy")
+    first = lines[2].split()
+    assert first[0] == "Ar" and float(first[1]) == pytest.approx(x[0, 0] * 10, abs=1e-6)

@@ -79,6 +79,14 @@ def _cmd_library(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_xyz(args: argparse.Namespace) -> int:
+    from .xyz import write_xyz
+
+    n = write_xyz(args.package, args.output)
+    print(f"wrote {args.output}: {n} atoms (extended XYZ, Å)")
+    return 0
+
+
 def _cmd_check(args: argparse.Namespace) -> int:
     from ucmd_spec.system import validate_system_package
 
@@ -114,6 +122,10 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("library", help="data sets and templates of the library source")
     p.add_argument("--set")
     p.set_defaults(func=_cmd_library)
+    p = sub.add_parser("xyz", help="write a package as extended XYZ (Å) for viewers")
+    p.add_argument("package", type=Path)
+    p.add_argument("-o", "--output", type=Path, required=True)
+    p.set_defaults(func=_cmd_xyz)
     p = sub.add_parser("check", help="validate a system package (ucmd-spec)")
     p.add_argument("package", type=Path)
     p.set_defaults(func=_cmd_check)
