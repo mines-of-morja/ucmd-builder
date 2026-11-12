@@ -11,19 +11,38 @@ license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.12"
 classifiers = [
-    "Development Status :: 1 - Planning",
+    "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
     "Topic :: Scientific/Engineering :: Chemistry",
     "Topic :: Scientific/Engineering :: Physics",
 ]
-dependencies = []
+dependencies = [
+    "numpy>=1.26",
+    "rdkit>=2024.3",
+    "tomli-w>=1.0",
+    # The reference validator of the spec version this builder writes (spec v0.1.0).
+    "ucmd-spec @ git+https://github.com/mines-of-morja/UnitcellMD@spec-v0.1.0#subdirectory=spec/validator",
+]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6"]
+# Packmol, packaged by its authors (MIT); provides the `packmol` executable in this environment.
+packmol = ["packmol>=21.2"]
+dev = ["pytest>=8", "ruff>=0.6", "packmol>=21.2"]
+
+[project.scripts]
+ucmd-build = "ucmd_builder.cli:main"
+
+# Force-field sources are plug-ins (ADR 0008). The built-in ones register like any other.
+[project.entry-points."ucmd_builder.forcefield_sources"]
+library = "ucmd_builder.forcefield.library:LibrarySource"
+gromacs-top = "ucmd_builder.forcefield.gromacs:GromacsTopSource"
 
 [tool.hatch.version]
 path = "src/ucmd_builder/__init__.py"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ucmd_builder"]
@@ -36,6 +55,9 @@ markers = ["slow: long-running validation tests (deselect with -m 'not slow')"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+extend-exclude = ["_umbrella"]  # CI checks out the umbrella repo here
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "NPY", "RUF"]
+# Typographic characters (−, ×, Å, °, ⁻²) are intentional in docs and messages about units.
+ignore = ["RUF001", "RUF002", "RUF003"]
