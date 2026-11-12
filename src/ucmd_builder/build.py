@@ -241,6 +241,12 @@ def build(
         for c in recipe.components
     )
     total_mass = sum(masses[c.name] * n for c, n in zip(recipe.components, counts, strict=True))
+    net_charge = sum(m.params.net_charge_e * n for m, n in zip(molecules, counts, strict=True))
+    if abs(net_charge) > 1e-6:
+        raise BuildError(
+            f"the system has a net charge of {net_charge:+.6g} e; a periodic package must be "
+            "neutral (spec E_NET_CHARGE). Add counter-ions or change the counts"
+        )
 
     box_record: dict[str, Any] = {}
     if composition is not None and composition.box_length_nm is not None:

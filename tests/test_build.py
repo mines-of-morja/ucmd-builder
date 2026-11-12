@@ -199,3 +199,13 @@ def test_xyz_export(tmp_path: Path) -> None:
     x = np.load(out / "positions.npy")
     first = lines[2].split()
     assert first[0] == "Ar" and float(first[1]) == pytest.approx(x[0, 0] * 10, abs=1e-6)
+
+
+def test_a_charged_system_is_a_recipe_error(tmp_path: Path) -> None:
+    text = ELECTROLYTE.replace("{method}", "insertion").replace(
+        'name = "PF6"\nmolecule = { smiles = "F[P-](F)(F)(F)(F)F" }\ncount = 3',
+        'name = "PF6"\nmolecule = { smiles = "F[P-](F)(F)(F)(F)F" }\ncount = 2',
+    )
+    assert "count = 2" in text
+    with pytest.raises(BuildError, match=r"net charge of \+0\.75 e"):
+        build(parse_recipe(text, path=tmp_path / "b.toml"))
