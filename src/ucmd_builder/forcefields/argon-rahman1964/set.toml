@@ -1,0 +1,16 @@
+# Liquid argon of Rahman (1964), pre-approved for fixtures (CLAUDE.md); same values as spec fixture argon-864.
+name = "argon-rahman1964"
+family = "Lennard-Jones argon"
+version = 1
+description = "Lennard-Jones argon, sigma = 3.4 Å, epsilon/k_B = 120 K."
+licence = "Published values with citation."
+
+[conventions]
+combination_rule = "geometric"
+scale_14_lj = 1.0
+scale_14_coulomb = 1.0
+
+[[citations]]
+what = "argon Lennard-Jones parameters"
+citation = "A. Rahman, Phys. Rev. 136, A405 (1964)"
+doi = "10.1103/PhysRev.136.A405"

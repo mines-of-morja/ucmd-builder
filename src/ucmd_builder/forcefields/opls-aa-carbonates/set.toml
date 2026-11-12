@@ -1,0 +1,15 @@
+# Working horse for carbonate electrolytes (ADR 0009): OPLS-AA conventions throughout.
+name = "opls-aa-carbonates"
+family = "OPLS-AA"
+version = 1
+description = "OPLS-AA for LiPF6 in organic carbonates: LigParGen 1.14*CM1A-LBCC solvents (EC, EMC), Jensen-Jorgensen Li+, CL&P PF6-. Ion charges are unscaled; the charge scaling zeta is a recipe transform."
+licence = "Values transcribed with citations from LigParGen output (no stated terms), Jensen & Jorgensen (2006) and the CL&P database il.ff (MIT, Copyright (c) 2019 Agilio Padua). No third-party files are included."
+
+[conventions]
+combination_rule = "geometric"
+scale_14_lj = 0.5
+scale_14_coulomb = 0.5
+
+[[citations]]
+what = "OPLS-AA force field: functional forms, geometric combination rule, 1-4 scaling 0.5/0.5"
+citation = "W. L. Jorgensen, D. S. Maxwell, J. Tirado-Rives, J. Am. Chem. Soc. 118, 11225 (1996)"

@@ -1,0 +1,27 @@
+# SPC/Fw water as printed in Wu, Tepper, Voth (2006), Table I (kcal/mol, Å, (k/2)(x - x0)^2 forms).
+# The geometry is the equilibrium one, from r0 and theta0.
+name = "water"
+description = "SPC/Fw flexible water"
+smiles = "O"
+formal_charge = 0
+atoms = [
+  { name = "OW",  element = "O", type = "OW", charge = -0.82, mass = 15.9994, xyz = [0.0, 0.0, 0.0] },
+  { name = "HW1", element = "H", type = "HW", charge = 0.41,  mass = 1.008,   xyz = [0.8450604460224342, 0.5567915611504581, 0.0] },
+  { name = "HW2", element = "H", type = "HW", charge = 0.41,  mass = 1.008,   xyz = [-0.8450604460224342, 0.5567915611504581, 0.0] },
+]
+bonds = [
+  { atoms = [0, 1], form = "harmonic", r0 = 1.012, k = 1059.162 },
+  { atoms = [0, 2], form = "harmonic", r0 = 1.012, k = 1059.162 },
+]
+angles = [
+  { atoms = [1, 0, 2], form = "harmonic", theta0 = 113.24, k = 75.90 },
+]
+
+[units]
+energy = "kcal/mol"
+length = "angstrom"
+harmonic = "k/2"
+
+[lj]
+OW = { sigma = 3.165492, epsilon = 0.1554253 }
+HW = { sigma = 0.0, epsilon = 0.0 }

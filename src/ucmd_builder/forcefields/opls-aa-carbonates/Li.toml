@@ -1,0 +1,24 @@
+# Li+: Jensen & Jorgensen (2006), values as printed there (Å, kcal/mol).
+name = "Li"
+description = "lithium cation"
+smiles = "[Li+]"
+formal_charge = 1
+atoms = [
+  { name = "Li", element = "Li", type = "Li", charge = 1.0, mass = 6.941, xyz = [0.0, 0.0, 0.0] },
+]
+
+[units]
+energy = "kcal/mol"
+length = "angstrom"
+
+[lj]
+Li = { sigma = 2.87, epsilon = 0.0005 }
+
+[[citations]]
+what = "Li+ Lennard-Jones parameters (OPLS-AA, geometric combination rule, fitted with TIP4P water)"
+citation = "K. P. Jensen, W. L. Jorgensen, J. Chem. Theory Comput. 2, 1499 (2006)"
+
+[[citations]]
+what = "Li+ values and mass checked against two distributed copies: BOSS 5.1 via LigParGen 3.0.1 (type opls_406: sigma 0.287 nm, epsilon 0.002092 kJ/mol, mass 6.941; run 2026-11-12) and mdgo (ion_lj_params.json, entry jensen_jorgensen, TIP4P)"
+citation = "LigParGen 3.0.1; mdgo, github.com/HouGroup/mdgo"
+url = "https://jorgensenresearch.com/ligpargen/"

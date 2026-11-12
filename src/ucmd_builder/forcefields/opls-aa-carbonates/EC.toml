@@ -1,0 +1,111 @@
+# EC: ethylene carbonate (1,3-dioxolan-2-one).
+# Values as printed in the generated GROMACS topology (nm, kJ/mol, degrees, ½k forms);
+# atom indices are 0-based. Transcribed by scripts/transcribe_gromacs.py.
+name = "EC"
+description = "ethylene carbonate (1,3-dioxolan-2-one)"
+smiles = "O=C1OCCO1"
+formal_charge = 0
+atoms = [
+  { name = "C00", element = "C", type = "opls_800", charge = 0.578745, mass = 12.011, xyz = [0.1489, -0.0121, 0.0166] },
+  { name = "O01", element = "O", type = "opls_801", charge = -0.39258, mass = 15.999, xyz = [0.2752, -0.0195, -0.001] },
+  { name = "O02", element = "O", type = "opls_802", charge = -0.329334, mass = 15.999, xyz = [0.0738, 0.0972, 0.0569] },
+  { name = "C03", element = "C", type = "opls_803", charge = -0.031493, mass = 12.011, xyz = [-0.0526, 0.0808, -0.0082] },
+  { name = "C04", element = "C", type = "opls_804", charge = -0.031501, mass = 12.011, xyz = [-0.0729, -0.0706, -0.0005] },
+  { name = "O05", element = "O", type = "opls_805", charge = -0.329328, mass = 15.999, xyz = [0.0587, -0.1179, -0.0025] },
+  { name = "H06", element = "H", type = "opls_806", charge = 0.133872, mass = 1.008, xyz = [-0.1328, 0.1359, 0.0407] },
+  { name = "H07", element = "H", type = "opls_807", charge = 0.133872, mass = 1.008, xyz = [-0.0454, 0.1099, -0.115] },
+  { name = "H08", element = "H", type = "opls_808", charge = 0.133873, mass = 1.008, xyz = [-0.1335, -0.1054, -0.0844] },
+  { name = "H09", element = "H", type = "opls_809", charge = 0.133874, mass = 1.008, xyz = [-0.1195, -0.0983, 0.0975] },
+]
+bonds = [
+  { atoms = [1, 0], form = "harmonic", r0 = 0.1229, k = 476976.0 },
+  { atoms = [2, 0], form = "harmonic", r0 = 0.1327, k = 179075.2 },
+  { atoms = [3, 2], form = "harmonic", r0 = 0.141, k = 267776.0 },
+  { atoms = [4, 3], form = "harmonic", r0 = 0.1529, k = 224262.4 },
+  { atoms = [5, 4], form = "harmonic", r0 = 0.141, k = 267776.0 },
+  { atoms = [6, 3], form = "harmonic", r0 = 0.109, k = 284512.0 },
+  { atoms = [7, 3], form = "harmonic", r0 = 0.109, k = 284512.0 },
+  { atoms = [8, 4], form = "harmonic", r0 = 0.109, k = 284512.0 },
+  { atoms = [9, 4], form = "harmonic", r0 = 0.109, k = 284512.0 },
+  { atoms = [5, 0], form = "harmonic", r0 = 0.1327, k = 179075.2 },
+]
+angles = [
+  { atoms = [2, 0, 1], form = "harmonic", theta0 = 123.4, k = 694.544 },
+  { atoms = [3, 2, 0], form = "harmonic", theta0 = 116.9, k = 694.544 },
+  { atoms = [4, 3, 2], form = "harmonic", theta0 = 109.5, k = 418.4 },
+  { atoms = [5, 4, 3], form = "harmonic", theta0 = 109.5, k = 418.4 },
+  { atoms = [6, 3, 2], form = "harmonic", theta0 = 109.5, k = 292.88 },
+  { atoms = [7, 3, 2], form = "harmonic", theta0 = 109.5, k = 292.88 },
+  { atoms = [8, 4, 3], form = "harmonic", theta0 = 110.7, k = 313.8 },
+  { atoms = [9, 4, 3], form = "harmonic", theta0 = 110.7, k = 313.8 },
+  { atoms = [5, 0, 1], form = "harmonic", theta0 = 123.4, k = 694.544 },
+  { atoms = [5, 0, 2], form = "harmonic", theta0 = 117.45, k = 586.848 },
+  { atoms = [6, 3, 4], form = "harmonic", theta0 = 110.7, k = 313.8 },
+  { atoms = [7, 3, 4], form = "harmonic", theta0 = 110.7, k = 313.8 },
+  { atoms = [8, 4, 5], form = "harmonic", theta0 = 109.5, k = 292.88 },
+  { atoms = [9, 4, 5], form = "harmonic", theta0 = 109.5, k = 292.88 },
+  { atoms = [7, 3, 6], form = "harmonic", theta0 = 107.8, k = 276.144 },
+  { atoms = [9, 4, 8], form = "harmonic", theta0 = 107.8, k = 276.144 },
+  { atoms = [4, 5, 0], form = "harmonic", theta0 = 116.9, k = 694.544 },
+]
+dihedrals = [
+  { atoms = [3, 2, 0, 1], form = "ryckaert-bellemans", c = [21.43882, 0.0, -21.43882, 0.0, 0.0, 0.0] },
+  { atoms = [4, 3, 2, 0], form = "ryckaert-bellemans", c = [-2.1966, 5.20071, 0.52718, -3.5313, 0.0, 0.0] },
+  { atoms = [5, 4, 3, 2], form = "ryckaert-bellemans", c = [-1.1506, 1.1506, 0.0, 0.0, 0.0, 0.0] },
+  { atoms = [6, 3, 2, 0], form = "ryckaert-bellemans", c = [0.41422, 1.24265, 0.0, -1.65686, 0.0, 0.0] },
+  { atoms = [7, 3, 2, 0], form = "ryckaert-bellemans", c = [0.41422, 1.24265, 0.0, -1.65686, 0.0, 0.0] },
+  { atoms = [8, 4, 3, 2], form = "ryckaert-bellemans", c = [0.6276, 1.8828, 0.0, -2.5104, 0.0, 0.0] },
+  { atoms = [9, 4, 3, 2], form = "ryckaert-bellemans", c = [0.6276, 1.8828, 0.0, -2.5104, 0.0, 0.0] },
+  { atoms = [4, 5, 0, 1], form = "ryckaert-bellemans", c = [21.43882, 0.0, -21.43882, 0.0, 0.0, 0.0] },
+  { atoms = [4, 5, 0, 2], form = "ryckaert-bellemans", c = [31.20636, -9.76755, -21.43882, 0.0, 0.0, 0.0] },
+  { atoms = [5, 0, 2, 3], form = "ryckaert-bellemans", c = [31.20636, -9.76755, -21.43882, 0.0, 0.0, 0.0] },
+  { atoms = [6, 3, 4, 5], form = "ryckaert-bellemans", c = [0.6276, 1.8828, 0.0, -2.5104, 0.0, 0.0] },
+  { atoms = [7, 3, 4, 5], form = "ryckaert-bellemans", c = [0.6276, 1.8828, 0.0, -2.5104, 0.0, 0.0] },
+  { atoms = [8, 4, 3, 6], form = "ryckaert-bellemans", c = [0.6276, 1.8828, 0.0, -2.5104, 0.0, 0.0] },
+  { atoms = [9, 4, 3, 6], form = "ryckaert-bellemans", c = [0.6276, 1.8828, 0.0, -2.5104, 0.0, 0.0] },
+  { atoms = [8, 4, 3, 7], form = "ryckaert-bellemans", c = [0.6276, 1.8828, 0.0, -2.5104, 0.0, 0.0] },
+  { atoms = [9, 4, 3, 7], form = "ryckaert-bellemans", c = [0.6276, 1.8828, 0.0, -2.5104, 0.0, 0.0] },
+  { atoms = [0, 5, 4, 8], form = "ryckaert-bellemans", c = [0.41422, 1.24265, 0.0, -1.65686, 0.0, 0.0] },
+  { atoms = [0, 5, 4, 9], form = "ryckaert-bellemans", c = [0.41422, 1.24265, 0.0, -1.65686, 0.0, 0.0] },
+  { atoms = [3, 4, 5, 0], form = "ryckaert-bellemans", c = [-2.1966, 5.20071, 0.52718, -3.5313, 0.0, 0.0] },
+]
+impropers = [
+  { atoms = [1, 0, 2, 5], form = "periodic", k = 43.932, n = 2, phi0 = 180.0 },
+]
+
+[units]
+energy = "kJ/mol"
+length = "nm"
+harmonic = "k/2"
+
+[lj]
+opls_800 = { sigma = 0.355, epsilon = 0.29288 }
+opls_801 = { sigma = 0.296, epsilon = 0.87864 }
+opls_802 = { sigma = 0.29, epsilon = 0.58576 }
+opls_803 = { sigma = 0.35, epsilon = 0.276144 }
+opls_804 = { sigma = 0.35, epsilon = 0.276144 }
+opls_805 = { sigma = 0.29, epsilon = 0.58576 }
+opls_806 = { sigma = 0.25, epsilon = 0.12552 }
+opls_807 = { sigma = 0.25, epsilon = 0.12552 }
+opls_808 = { sigma = 0.25, epsilon = 0.12552 }
+opls_809 = { sigma = 0.25, epsilon = 0.12552 }
+
+[generation]
+tool = "LigParGen 3.0.1 (BOSS 5.1, RDKit 2023.03.3), https://jorgensenresearch.com/ligpargen/"
+input = "SMILES O=C1OCCO1; charge model 1.14*CM1A-LBCC; net charge 0; optimization rounds 0"
+date = "2026-11-12"
+topology_sha256 = "fca932e47daa97b51b4efc363469f811bb9b278ff87957a6a3ebb7f1c5fb7a06"
+
+[[citations]]
+what = "EC parameters: OPLS-AA atom types, Lennard-Jones and bonded terms, 1.14*CM1A-LBCC charges, generated with LigParGen"
+citation = "L. S. Dodda, I. Cabeza de Vaca, J. Tirado-Rives, W. L. Jorgensen, Nucleic Acids Res. 45, W331 (2017)"
+doi = "10.1093/nar/gkx312"
+url = "https://jorgensenresearch.com/ligpargen/"
+
+[[citations]]
+what = "EC partial charges: the 1.14*CM1A-LBCC charge model"
+citation = "L. S. Dodda, J. Z. Vilseck, J. Tirado-Rives, W. L. Jorgensen, J. Phys. Chem. B 121, 3864 (2017)"
+
+[[citations]]
+what = "EC parameter assignment with BOSS"
+citation = "W. L. Jorgensen, J. Tirado-Rives, J. Comput. Chem. 26, 1689 (2005)"

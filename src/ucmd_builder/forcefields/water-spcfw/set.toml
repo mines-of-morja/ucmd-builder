@@ -1,0 +1,15 @@
+# SPC/Fw flexible water, pre-approved for fixtures (CLAUDE.md); same values as spec fixture water-2.
+name = "water-spcfw"
+family = "SPC/Fw"
+version = 1
+description = "SPC/Fw flexible water (Wu, Tepper, Voth 2006, Table I)."
+licence = "Published values with citation."
+
+[conventions]
+combination_rule = "lorentz-berthelot"
+scale_14_lj = 0.5
+scale_14_coulomb = 0.5
+
+[[citations]]
+what = "SPC/Fw water: charges, Lennard-Jones, bond and angle parameters (Table I)"
+citation = "Y. Wu, H. L. Tepper, G. A. Voth, J. Chem. Phys. 124, 024503 (2006)"

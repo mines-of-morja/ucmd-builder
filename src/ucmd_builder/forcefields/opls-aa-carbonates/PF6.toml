@@ -1,0 +1,62 @@
+# PF6-: CL&P database il.ff (version 2026/10/09), values as printed there (kJ/mol, Å, ½k forms:
+# "bond and angle force constants are in the form k/2 (x - x0)^2"). Geometry from CL&P PF6.zmat:
+# a regular octahedron with P-F = 1.606 Å.
+name = "PF6"
+description = "hexafluorophosphate anion"
+smiles = "F[P-](F)(F)(F)(F)F"
+formal_charge = -1
+atoms = [
+  { name = "P",  element = "P", type = "P",  charge = 1.34,  mass = 30.974, xyz = [0.0, 0.0, 0.0] },
+  { name = "F1", element = "F", type = "FP", charge = -0.39, mass = 18.998, xyz = [1.606, 0.0, 0.0] },
+  { name = "F2", element = "F", type = "FP", charge = -0.39, mass = 18.998, xyz = [-1.606, 0.0, 0.0] },
+  { name = "F3", element = "F", type = "FP", charge = -0.39, mass = 18.998, xyz = [0.0, 1.606, 0.0] },
+  { name = "F4", element = "F", type = "FP", charge = -0.39, mass = 18.998, xyz = [0.0, -1.606, 0.0] },
+  { name = "F5", element = "F", type = "FP", charge = -0.39, mass = 18.998, xyz = [0.0, 0.0, 1.606] },
+  { name = "F6", element = "F", type = "FP", charge = -0.39, mass = 18.998, xyz = [0.0, 0.0, -1.606] },
+]
+bonds = [
+  { atoms = [0, 1], form = "harmonic", r0 = 1.606, k = 3100.0 },
+  { atoms = [0, 2], form = "harmonic", r0 = 1.606, k = 3100.0 },
+  { atoms = [0, 3], form = "harmonic", r0 = 1.606, k = 3100.0 },
+  { atoms = [0, 4], form = "harmonic", r0 = 1.606, k = 3100.0 },
+  { atoms = [0, 5], form = "harmonic", r0 = 1.606, k = 3100.0 },
+  { atoms = [0, 6], form = "harmonic", r0 = 1.606, k = 3100.0 },
+]
+# The 12 cis F-P-F angles. il.ff defines F-P-F at 90.0 degrees; CL&P's fftool removes angles that
+# deviate by more than 15 degrees from that value, i.e. the three trans pairs F1-F2, F3-F4, F5-F6.
+angles = [
+  { atoms = [1, 0, 3], form = "harmonic", theta0 = 90.0, k = 1165.0 },
+  { atoms = [1, 0, 4], form = "harmonic", theta0 = 90.0, k = 1165.0 },
+  { atoms = [1, 0, 5], form = "harmonic", theta0 = 90.0, k = 1165.0 },
+  { atoms = [1, 0, 6], form = "harmonic", theta0 = 90.0, k = 1165.0 },
+  { atoms = [2, 0, 3], form = "harmonic", theta0 = 90.0, k = 1165.0 },
+  { atoms = [2, 0, 4], form = "harmonic", theta0 = 90.0, k = 1165.0 },
+  { atoms = [2, 0, 5], form = "harmonic", theta0 = 90.0, k = 1165.0 },
+  { atoms = [2, 0, 6], form = "harmonic", theta0 = 90.0, k = 1165.0 },
+  { atoms = [3, 0, 5], form = "harmonic", theta0 = 90.0, k = 1165.0 },
+  { atoms = [3, 0, 6], form = "harmonic", theta0 = 90.0, k = 1165.0 },
+  { atoms = [4, 0, 5], form = "harmonic", theta0 = 90.0, k = 1165.0 },
+  { atoms = [4, 0, 6], form = "harmonic", theta0 = 90.0, k = 1165.0 },
+]
+
+[units]
+energy = "kJ/mol"
+length = "angstrom"
+harmonic = "k/2"
+
+[lj]
+P = { sigma = 3.74, epsilon = 0.8368 }
+FP = { sigma = 3.12, epsilon = 0.2552 }
+
+[[citations]]
+what = "PF6- charges, Lennard-Jones, bond and angle parameters (CL&P database il.ff, version 2026/10/09, MIT licence)"
+citation = "J. N. Canongia Lopes, A. A. H. Padua, CL&P force field for ionic liquids, il.ff"
+url = "https://github.com/paduagroup/clandp"
+
+[[citations]]
+what = "PF6- parameters, origin as cited in il.ff (hexafluorophosphate)"
+citation = "G. A. Kaminski, W. L. Jorgensen, J. Chem. Soc., Perkin Trans. 2, 2365 (1999)"
+
+[[citations]]
+what = "PF6- source as cited by the Lehnert 2025 benchmark (SI)"
+citation = "J. N. Canongia Lopes, A. A. H. Padua, J. Phys. Chem. B 108, 16893 (2004)"

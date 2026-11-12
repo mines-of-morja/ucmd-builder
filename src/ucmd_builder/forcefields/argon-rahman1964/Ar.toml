@@ -1,0 +1,15 @@
+# Argon atom. sigma in Å and epsilon/k_B in K as printed by Rahman (1964); the mass is the standard
+# atomic weight of argon, as in spec fixture argon-864.
+name = "Ar"
+description = "argon atom"
+smiles = "[Ar]"
+formal_charge = 0
+atoms = [
+  { name = "Ar", element = "Ar", type = "Ar", charge = 0.0, mass = 39.948, xyz = [0.0, 0.0, 0.0] },
+]
+
+[units]
+length = "angstrom"
+
+[lj]
+Ar = { sigma = 3.4, epsilon_over_kB = 120.0 }
