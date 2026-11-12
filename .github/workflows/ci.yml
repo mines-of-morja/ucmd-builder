@@ -7,6 +7,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # Umbrella tag whose spec/ (schemas and fixtures) this builder writes and is tested against.
+  UMBRELLA_REF: spec-v0.1.0
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -16,14 +20,24 @@ jobs:
         python-version: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
+      - name: Spec schemas and fixtures from the umbrella repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/UnitcellMD
+          ref: ${{ env.UMBRELLA_REF }}
+          path: _umbrella
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install
+      - name: Install (with Packmol from its PyPI wheel)
         run: python -m pip install -e '.[dev]'
       - name: Lint
         run: |
           ruff check .
           ruff format --check .
-      - name: Test
+      - name: Test (spec fixtures and Packmol required)
         run: pytest
+        env:
+          UCMD_SPEC_DIR: ${{ github.workspace }}/_umbrella/spec
+          UCMD_REQUIRE_SPEC: "1"
+          UCMD_REQUIRE_PACKMOL: "1"
