@@ -1,0 +1,44 @@
+# 1 M LiPF6 in EC:EMC 3:7 (w:w) with 500 solvent molecules: Lehnert 2025, SI Table S1.
+# Force field: the working horse of ADR 0009 (OPLS-AA, LigParGen solvents, JJ06 Li+, CL&P PF6-),
+# ion charges scaled by zeta = 0.75 (Lehnert SI Table S3).
+# The density is a placeholder until the Landesfeind 2019 SI is available; see the note in the
+# package provenance. Build:  ucmd-build build examples/lp57-1M.toml -o lp57-1M.ucsys
+format = "ucmd-build"
+version = "0.1"
+name = "lipf6-ec-emc-1M"
+description = "1 M LiPF6 in EC:EMC 3:7 (w:w), 500 solvent molecules as in Lehnert 2025 Table S1"
+seed = 20261112
+
+[forcefield]
+source = "library"
+set = "opls-aa-carbonates"
+
+[composition]
+salt = ["Li", "PF6"]
+solvent = { EC = 0.3, EMC = 0.7 }
+basis = "mass"
+molarity_mol_L = 1.0
+solvent_molecules = 500
+density_g_cm3 = { value = 1.2, source = "placeholder (PLAN.md B1.4) until the Landesfeind 2019 SI is available" }
+
+[[component]]
+name = "Li"
+molecule = { smiles = "[Li+]" }
+charge_scale = 0.75
+
+[[component]]
+name = "PF6"
+molecule = { smiles = "F[P-](F)(F)(F)(F)F" }
+charge_scale = 0.75
+
+[[component]]
+name = "EC"
+molecule = { library = "EC" }
+
+[[component]]
+name = "EMC"
+molecule = { smiles = "CCOC(=O)OC" }
+
+[packing]
+method = "packmol"
+tolerance_nm = 0.2

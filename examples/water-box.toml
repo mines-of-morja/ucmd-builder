@@ -1,0 +1,25 @@
+# 500 SPC/Fw water molecules at 0.997 g/cm3, packed with Packmol, velocities at 298.15 K.
+# Build:  ucmd-build build examples/water-box.toml -o water-box.ucsys
+format = "ucmd-build"
+version = "0.1"
+name = "water-box"
+seed = 1
+
+[forcefield]
+source = "library"
+set = "water-spcfw"
+
+[[component]]
+name = "water"
+molecule = { library = "water" }
+count = 500
+
+[box]
+density_g_cm3 = { value = 0.997, source = "placeholder: approximate density of liquid water at 298 K" }
+
+[packing]
+method = "packmol"
+tolerance_nm = 0.2
+
+[velocities]
+temperature_K = 298.15
