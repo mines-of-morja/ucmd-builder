@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from conftest import requires_packmol
+from helpers import requires_packmol
 
 from ucmd_builder.forcefield.library import load_template
 from ucmd_builder.packing import Structure, make_whole

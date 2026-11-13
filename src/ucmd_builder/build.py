@@ -421,6 +421,20 @@ def _check_distances(
     )
 
 
+def component_masses(recipe: Recipe) -> dict[str, float]:
+    """Molar mass (g/mol) of one molecule of every component, as the build parameterizes it."""
+    masses = {}
+    for k, component in enumerate(recipe.components):
+        try:
+            graph = _molecule(component, recipe, k)
+            params, _ = _parameterize(component, recipe, graph)
+        except SourceError as e:
+            raise BuildError(f"component {component.name}: {e}") from None
+        params, _ = _transform(component, params)
+        masses[component.name] = BuiltMolecule(component.name, "", graph, params).mass_amu
+    return masses
+
+
 def molecule_index(built: BuiltSystem) -> np.ndarray:
     sizes = [
         m.graph.n_atoms
