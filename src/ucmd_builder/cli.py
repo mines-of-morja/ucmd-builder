@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -42,15 +43,9 @@ def _cmd_compose(args: argparse.Namespace) -> int:
     recipe = load_recipe(args.recipe)
     if recipe.composition is None:
         raise RecipeError("the recipe has no [composition]")
-    from .build import BuiltMolecule, _molecule, _parameterize, _transform  # internal helpers
+    from .build import component_masses
 
-    masses = {}
-    for k, c in enumerate(recipe.components):
-        graph = _molecule(c, recipe, k)
-        params, _ = _parameterize(c, recipe, graph)
-        params, _ = _transform(c, params)
-        masses[c.name] = BuiltMolecule(c.name, "", graph, params).mass_amu
-    result = compose(recipe.composition, masses)
+    result = compose(recipe.composition, component_masses(recipe))
     print(json.dumps(result.to_json(), indent=2))
     return 0
 
@@ -100,6 +95,23 @@ def _cmd_check(args: argparse.Namespace) -> int:
     return 0 if report.ok else 1
 
 
+def _cmd_gui(args: argparse.Namespace) -> int:
+    missing = [
+        m
+        for m in ("PySide6", "pyvista", "pyvistaqt", "h5py")
+        if importlib.util.find_spec(m) is None
+    ]
+    if missing:
+        print(
+            f"the GUI needs {', '.join(missing)}: pip install -e '.[gui]' (or 'ucmd-builder[gui]')",
+            file=sys.stderr,
+        )
+        return 2
+    from .gui import main as gui_main
+
+    return gui_main([str(args.recipe)] if args.recipe else [])
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="ucmd-build", description="UnitcellMD system builder")
     ap.add_argument("--version", action="version", version=created_by())
@@ -129,6 +141,9 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("check", help="validate a system package (ucmd-spec)")
     p.add_argument("package", type=Path)
     p.set_defaults(func=_cmd_check)
+    p = sub.add_parser("gui", help="the GUI preview: build, view and run systems")
+    p.add_argument("recipe", type=Path, nargs="?", help="a recipe to open")
+    p.set_defaults(func=_cmd_gui)
     args = ap.parse_args(argv)
     try:
         return int(args.func(args))

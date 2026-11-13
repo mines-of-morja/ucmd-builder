@@ -28,6 +28,10 @@ dependencies = [
 [project.optional-dependencies]
 # Packmol, packaged by its authors (MIT); provides the `packmol` executable in this environment.
 packmol = ["packmol>=21.2"]
+# The GUI preview (B2a; ADR 0006): Qt, the VTK viewer, and h5py to play H5MD trajectories.
+gui = ["PySide6>=6.12", "pyvista>=0.49", "pyvistaqt>=0.13", "h5py>=3.10"]
+# GUI tests (tests/gui); kept out of `dev`, because pytest-qt stops every test run without Qt.
+gui-test = ["ucmd-builder[gui]", "pytest-qt>=4.4"]
 dev = ["pytest>=8", "ruff>=0.6", "packmol>=21.2"]
 
 [project.scripts]
