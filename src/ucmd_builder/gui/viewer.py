@@ -25,12 +25,17 @@ CELL_COLOR = "#303030"
 HIGHLIGHT_COLOR = "#ffd700"
 
 
+IMAGE_OPACITY = 0.2
+
+
 class Viewer(Protocol):
     """What the GUI needs from a 3D view; another viewer can implement the same protocol."""
 
     def show_scene(self, scene: Scene) -> None: ...
 
     def show_positions(self, positions_nm: np.ndarray) -> None: ...
+
+    def show_images(self, on: bool) -> None: ...
 
     def highlight(self, atoms: Sequence[int]) -> None: ...
 
@@ -83,11 +88,15 @@ class SceneActors:
         self._cloud: pv.PolyData | None = None
         self._bonds: pv.PolyData | None = None
         self._highlight: vtk.vtkActor | None = None
+        self._images: pv.PolyData | None = None
+        self._images_actor: vtk.vtkActor | None = None
+        self.images_on = False
         plotter.set_background(BACKGROUND)
 
     def show(self, scene: Scene) -> None:
         self.plotter.clear_actors()
         self._highlight = None
+        self._images, self._images_actor = None, None
         self.scene = scene
         self.points = scene.display_positions()
         cloud = pv.PolyData(self.points)
@@ -111,7 +120,42 @@ class SceneActors:
                 name="cell",
                 reset_camera=False,
             )
+        if self.images_on:
+            self._draw_images()
         self.plotter.reset_camera()
+        self.plotter.render()
+
+    def _image_points(self) -> np.ndarray:
+        """The atoms in the 26 neighbouring cells (3×3×3 without the centre)."""
+        assert self.scene is not None and self.scene.cell_nm is not None
+        shifts = [
+            np.array([i, j, k]) @ self.scene.cell_nm
+            for i in (-1, 0, 1)
+            for j in (-1, 0, 1)
+            for k in (-1, 0, 1)
+            if (i, j, k) != (0, 0, 0)
+        ]
+        return np.concatenate([self.points + shift for shift in shifts])
+
+    def _draw_images(self) -> None:
+        if self.scene is None or self.scene.cell_nm is None or self._cloud is None:
+            return
+        images = pv.PolyData(self._image_points())
+        images["radius"] = np.tile(self._cloud["radius"], 26)
+        images["colors"] = np.tile(self._cloud["colors"], (26, 1))
+        actor = _spheres(images)
+        actor.GetProperty().SetOpacity(IMAGE_OPACITY)
+        self._images, self._images_actor = images, actor
+        self.plotter.add_actor(actor, name="images", reset_camera=False)
+
+    def show_images(self, on: bool) -> None:
+        """Draw the periodic images of the 26 neighbouring cells, faded."""
+        self.images_on = on
+        if self._images_actor is not None:
+            self.plotter.remove_actor(self._images_actor)
+            self._images, self._images_actor = None, None
+        if on:
+            self._draw_images()
         self.plotter.render()
 
     def move(self, positions_nm: np.ndarray) -> None:
@@ -122,6 +166,8 @@ class SceneActors:
         self._cloud.points = self.points
         if self._bonds is not None:
             self._bonds.points = self.points
+        if self._images is not None:
+            self._images.points = self._image_points()
         self.plotter.render()
 
     def highlight(self, atoms: Sequence[int]) -> None:
@@ -175,6 +221,9 @@ def make_qt_viewer(parent=None):
 
         def show_positions(self, positions_nm: np.ndarray) -> None:
             self.actors_.move(positions_nm)
+
+        def show_images(self, on: bool) -> None:
+            self.actors_.show_images(on)
 
         def highlight(self, atoms: Sequence[int]) -> None:
             self.actors_.highlight(atoms)

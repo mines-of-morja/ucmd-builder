@@ -20,6 +20,9 @@ class FakeViewer:
     def show_positions(self, positions_nm) -> None:
         self.frames.append(positions_nm)
 
+    def show_images(self, on: bool) -> None:
+        self.images = on
+
     def highlight(self, atoms) -> None:
         self.highlights.append(list(atoms))
 

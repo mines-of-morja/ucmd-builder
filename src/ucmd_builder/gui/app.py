@@ -128,6 +128,8 @@ class MainWindow(QMainWindow):
         self.act_cancel = self._action("Cancel", self.cancel_build)
         self.act_export = self._action("Export package…", self._export_dialog, "Ctrl+E")
         self.act_run = self._action("Run preview…", self._run_dialog, "Ctrl+R")
+        self.act_images = self._action("Periodic images", self.viewer.show_images, "Ctrl+I")
+        self.act_images.setCheckable(True)
         self.act_undo = self.document.undo_stack.createUndoAction(self, "Undo")
         self.act_undo.setShortcut(QKeySequence.StandardKey.Undo)
         self.act_redo = self.document.undo_stack.createRedoAction(self, "Redo")
@@ -144,6 +146,8 @@ class MainWindow(QMainWindow):
         menu = self.menuBar().addMenu("&Build")
         menu.addAction(self.act_build)
         menu.addAction(self.act_cancel)
+        menu = self.menuBar().addMenu("&View")
+        menu.addAction(self.act_images)
         menu = self.menuBar().addMenu("&Run")
         menu.addAction(self.act_run)
         toolbar = self.addToolBar("Main")
@@ -159,6 +163,8 @@ class MainWindow(QMainWindow):
         toolbar.addSeparator()
         toolbar.addAction(self.act_export)
         toolbar.addAction(self.act_run)
+        toolbar.addSeparator()
+        toolbar.addAction(self.act_images)
         self.toolbar = toolbar
 
     def _clean_changed(self, clean: bool) -> None:

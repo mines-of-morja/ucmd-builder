@@ -56,6 +56,16 @@ def test_scene_renders_moves_and_picks(scene: Scene, tmp_path: Path) -> None:
     assert np.abs(moved.astype(int) - first.astype(int)).sum() > 0
     actors.highlight([0, 1, 2])
     actors.highlight([])
+    actors.show_images(True)  # 26 faded copies around the cell
+    assert actors._images.n_points == 26 * scene.n_atoms
+    shift = actors._images.points[: scene.n_atoms] - actors.points
+    assert np.allclose(shift, -scene.cell_nm.sum(axis=0))  # the (−1, −1, −1) image first
+    with_images = plotter.screenshot()
+    assert coloured(with_images) > coloured(moved)
+    actors.move(scene.positions_nm)  # playback moves the images too
+    assert np.allclose(actors._images.points[: scene.n_atoms] - actors.points, shift)
+    actors.show_images(False)
+    assert actors._images is None
     plotter.close()
 
 

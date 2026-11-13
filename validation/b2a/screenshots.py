@@ -52,6 +52,10 @@ class ImageViewer(QLabel):
         self.actors.move(positions_nm)
         self._show()
 
+    def show_images(self, on: bool) -> None:
+        self.actors.show_images(on)
+        self._show()
+
     def highlight(self, atoms) -> None:
         self.actors.highlight(atoms)
         self._show()
