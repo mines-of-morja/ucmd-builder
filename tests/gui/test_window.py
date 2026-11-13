@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from fakes import FakeViewer
 from sample_recipes import ELECTROLYTE
 
 from ucmd_builder.gui.app import MainWindow
@@ -17,28 +18,6 @@ from ucmd_builder.gui.scene import read_package
 from ucmd_builder.recipe import RecipeError, load_recipe, to_toml
 
 EXAMPLES = Path(__file__).resolve().parents[2] / "examples"
-
-
-class FakeViewer:
-    """Records what the window asks the 3D view to do."""
-
-    def __init__(self) -> None:
-        self.scenes, self.highlights, self.pick = [], [], None
-
-    def show_scene(self, scene) -> None:
-        self.scenes.append(scene)
-
-    def show_positions(self, positions_nm) -> None:
-        pass
-
-    def highlight(self, atoms) -> None:
-        self.highlights.append(list(atoms))
-
-    def on_pick(self, callback) -> None:
-        self.pick = callback
-
-    def screenshot(self, path) -> None:
-        pass
 
 
 @pytest.fixture

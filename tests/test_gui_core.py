@@ -88,3 +88,61 @@ def test_thermo_tail_reads_only_complete_lines(tmp_path: Path) -> None:
     path.write_text(header + "0\t0.0\t310.0\t-6.0\n")  # truncated, e.g. by a restart
     tail.poll()
     assert list(tail.column("temperature_K")) == [310.0]
+
+
+def test_preview_cutoff_follows_the_approved_rule() -> None:
+    from ucmd_builder.gui.runs import preview_cutoff
+
+    assert preview_cutoff(np.diag([4.276] * 3)) == (1.4, None)  # Lehnert's box keeps 1.4 nm
+    cutoff, warning = preview_cutoff(np.diag([2.6] * 3))  # L/2 − 0.2 = 1.1 nm
+    assert cutoff == pytest.approx(1.1) and "1.10 nm" in warning
+    cutoff, _ = preview_cutoff(np.diag([2.79] * 3))  # 1.195 → rounded down to 1.15
+    assert cutoff == pytest.approx(1.15)
+    # triclinic: the face distances are 2.80, 2.60 and 9.0 nm, so 2.6 nm decides
+    skew = np.array([[3.0, 0.0, 0.0], [1.0, 2.6, 0.0], [0.0, 0.0, 9.0]])
+    assert preview_cutoff(skew)[0] == pytest.approx(1.1)
+    # the face distance across a, not the edge length, can be the smallest: 2.5986 nm here
+    assert preview_cutoff(np.array([[3.0, 0, 0], [1.5, 2.6, 0], [0, 0, 9.0]]))[0] == 1.05
+    with pytest.raises(ValueError):
+        preview_cutoff(np.diag([0.3] * 3))
+
+
+def test_generated_run_files_pass_the_spec_validator(spec: Path, tmp_path: Path) -> None:
+    from ucmd_spec.run_config import validate_run_config
+
+    from ucmd_builder.gui.runs import RunSettings, new_run_dir, run_files
+    from ucmd_builder.package import _spec_dir
+
+    package = tmp_path / "box.ucsys"
+    package.mkdir()
+    run_dir = new_run_dir(package)
+    assert run_dir.parent == tmp_path / "box.ucsys.runs"  # next to the package, not inside
+    for settings in (RunSettings(), RunSettings(thermostat="csvr", minimize=False)):
+        files = run_files(package, run_dir, settings, 1.1)
+        assert set(files) == ({"minimize.toml", "run.toml"} if settings.minimize else {"run.toml"})
+        for name, text in files.items():
+            (run_dir / name).write_text(text)
+            with _spec_dir():
+                report = validate_run_config(run_dir / name)
+            assert report.ok, [i.message for i in report.issues]
+    assert 'system = "../../box.ucsys"' in files["run.toml"]
+
+
+def test_set_executable_keeps_the_rest_of_the_profile(tmp_path: Path) -> None:
+    from ucmd_builder.gui.runs import set_executable
+
+    profile = tmp_path / "machine.toml"
+    profile.write_text(
+        '# my workstation\nthreads = 8\n\n[executables]\npackmol = "/opt/packmol"  # keep\n'
+    )
+    set_executable("ucmd", tmp_path / "bin" / "ucmd", profile)
+    text = profile.read_text()
+    assert "# my workstation" in text and 'packmol = "/opt/packmol"  # keep' in text
+    assert f'ucmd = "{(tmp_path / "bin" / "ucmd").resolve()}"' in text
+    set_executable("ucmd", tmp_path / "other", profile)  # replaced, not added twice
+    assert profile.read_text().count("ucmd =") == 1
+    fresh = tmp_path / "new" / "machine.toml"
+    set_executable("ucmd", tmp_path / "u", fresh)
+    import tomllib
+
+    assert tomllib.loads(fresh.read_text())["executables"]["ucmd"].endswith("/u")

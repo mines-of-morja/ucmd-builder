@@ -34,6 +34,8 @@ from .components import ComponentsPanel
 from .composition import CompositionDialog
 from .document import RecipeDocument
 from .panels import LogPanel, PropertiesPanel
+from .run_preview import RunController, RunDialog, RunPanel, write_run
+from .runs import RunSettings, new_run_dir, preview_cutoff
 from .scene import Scene, read_package
 from .viewer import Viewer, make_qt_viewer
 
@@ -63,6 +65,8 @@ class MainWindow(QMainWindow):
         self.package_path: Path | None = None
         self._thread: QThread | None = None
         self._worker: BuildWorker | None = None
+        self.run: RunController | None = None
+        self.run_dir: Path | None = None
         if isinstance(self.viewer, QWidget):
             self.setCentralWidget(self.viewer)
         self.log = LogPanel()
@@ -71,6 +75,10 @@ class MainWindow(QMainWindow):
         self._dock("Components", self.components, "left")
         self._dock("Properties", self.properties, "right")
         self._dock("Log", self.log, "bottom")
+        self.run_panel = RunPanel()
+        self._dock("Run", self.run_panel, "bottom")
+        self.run_panel.frame.connect(self.viewer.show_positions)
+        self.run_panel.cancel_requested.connect(self.stop_run)
         self._actions()
         self.document.changed.connect(self._recipe_changed)
         self.document.path_changed.connect(lambda _p: self._update_title())
@@ -118,6 +126,7 @@ class MainWindow(QMainWindow):
         self.act_build = self._action("Build", self.start_build, "Ctrl+B")
         self.act_cancel = self._action("Cancel", self.cancel_build)
         self.act_export = self._action("Export package…", self._export_dialog, "Ctrl+E")
+        self.act_run = self._action("Run preview…", self._run_dialog, "Ctrl+R")
         self.act_undo = self.document.undo_stack.createUndoAction(self, "Undo")
         self.act_undo.setShortcut(QKeySequence.StandardKey.Undo)
         self.act_redo = self.document.undo_stack.createRedoAction(self, "Redo")
@@ -134,6 +143,8 @@ class MainWindow(QMainWindow):
         menu = self.menuBar().addMenu("&Build")
         menu.addAction(self.act_build)
         menu.addAction(self.act_cancel)
+        menu = self.menuBar().addMenu("&Run")
+        menu.addAction(self.act_run)
         toolbar = self.addToolBar("Main")
         toolbar.setObjectName("Main")
         for a in (self.act_new, self.act_open, self.act_save):
@@ -146,6 +157,7 @@ class MainWindow(QMainWindow):
         toolbar.addAction(self.act_cancel)
         toolbar.addSeparator()
         toolbar.addAction(self.act_export)
+        toolbar.addAction(self.act_run)
         self.toolbar = toolbar
 
     def _clean_changed(self, clean: bool) -> None:
@@ -166,6 +178,9 @@ class MainWindow(QMainWindow):
         self.act_build.setEnabled(not building and bool(self.document.recipe.components))
         self.act_cancel.setEnabled(building)
         self.act_export.setEnabled(not building and self.built is not None)
+        self.act_run.setEnabled(
+            not building and not self.is_running() and self.package_path is not None
+        )
 
     # -- recipe --------------------------------------------------------------------------------
 
@@ -329,6 +344,69 @@ class MainWindow(QMainWindow):
             overwrite = True
         self.export_package(path, overwrite=overwrite)
 
+    # -- run preview ---------------------------------------------------------------------------
+
+    def is_running(self) -> bool:
+        return self.run is not None
+
+    def _run_dialog(self) -> None:
+        if self.package_path is None or self.scene is None:
+            self.log.add("export the package (or open one) first")
+            return
+        dialog = RunDialog(self.package_path, self.scene, self.ask, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.start_run(dialog.settings())
+
+    def start_run(self, settings: RunSettings) -> Path | None:
+        """Write the run directory next to the package and start the engine."""
+        from ucmd_spec.run_config import validate_run_config
+
+        from ..package import _spec_dir
+        from ..profile import executable
+
+        if self.package_path is None or self.scene is None or self.is_running():
+            return None
+        ucmd = executable("ucmd")
+        if ucmd is None:
+            self.log.add("no engine: set [executables] ucmd in the machine profile (Run preview…)")
+            return None
+        try:
+            cutoff, warning = preview_cutoff(self.scene.cell_nm)
+        except (TypeError, ValueError) as e:
+            self.log.add(f"cannot run: {e}")
+            return None
+        if warning:
+            self.log.add(warning)
+        run_dir = new_run_dir(self.package_path)
+        write_run(self.package_path, run_dir, settings, cutoff)
+        with _spec_dir():
+            report = validate_run_config(run_dir / "run.toml")
+        if not report.ok:  # a builder bug: never start the engine on an invalid file
+            for issue in report.issues:
+                self.log.add(f"run.toml: {issue.code} {issue.message}")
+            return None
+        self.run_dir = run_dir
+        self.run = RunController(ucmd, run_dir, settings.minimize, self)
+        self.run.line.connect(self.log.add)
+        self.run.stage.connect(lambda stage: self.statusBar().showMessage(f"engine: {stage}"))
+        self.run.finished.connect(self._run_finished)
+        self.run_panel.begin(run_dir, settings)
+        self.run.start()
+        self._update_actions()
+        return run_dir
+
+    def stop_run(self) -> None:
+        if self.run is not None:
+            self.run.cancel()
+
+    def _run_finished(self, code: int, message: str) -> None:
+        self.log.add(f"run {message}")
+        if self.run_dir is not None:
+            self.run_panel.end(self.run_dir, message)
+        self.statusBar().showMessage(f"run {message}")
+        self.run = None
+        self._update_actions()
+
     # -- selection -----------------------------------------------------------------------------
 
     def _component_selected(self, name: str) -> None:
@@ -343,14 +421,21 @@ class MainWindow(QMainWindow):
         self.viewer.highlight([index])
 
     def closeEvent(self, event) -> None:
-        if self._discard_ok():
-            if self._worker is not None:
-                self._worker.cancel()
-                if self._thread is not None:
-                    self._thread.wait()
-            event.accept()
-        else:
+        if self.is_running() and not self.ask("A run is going. Stop it and quit?"):
             event.ignore()
+            return
+        if not self._discard_ok():
+            event.ignore()
+            return
+        if self._worker is not None:
+            self._worker.cancel()
+            if self._thread is not None:
+                self._thread.wait()
+        if self.run is not None and self.run.process is not None:
+            process = self.run.process
+            self.run.cancel()
+            process.waitForFinished(15_000)
+        event.accept()
 
 
 def run_app(argv: list[str]) -> int:
