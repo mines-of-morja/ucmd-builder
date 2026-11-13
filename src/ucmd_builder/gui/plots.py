@@ -6,12 +6,13 @@ QtCharts is part of PySide6, so no plotting library is added.
 from __future__ import annotations
 
 from PySide6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
-from PySide6.QtCore import QPointF, Qt
+from PySide6.QtCore import QMargins, QPointF, Qt
 from PySide6.QtGui import QPainter, QPen
-from PySide6.QtWidgets import QHBoxLayout, QWidget
+from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 from .thermo import ThermoTail
 
+MIN_CHART_HEIGHT = 230
 ENERGIES = (
     ("potential_kjmol", "potential"),
     ("total_kjmol", "total"),
@@ -20,16 +21,22 @@ ENERGIES = (
 
 
 class _Chart(QChartView):
-    def __init__(self, title: str, y_label: str) -> None:
+    def __init__(self, y_label: str, y_format: str) -> None:
         chart = QChart()
-        chart.setTitle(title)
-        chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
+        chart.legend().setAlignment(Qt.AlignmentFlag.AlignTop)
+        chart.setMargins(QMargins(2, 2, 2, 2))
+        chart.layout().setContentsMargins(0, 0, 0, 0)
         super().__init__(chart)
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.setMinimumHeight(MIN_CHART_HEIGHT)
         self.x_axis = QValueAxis()
         self.x_axis.setTitleText("time (ps)")
+        self.x_axis.setLabelFormat("%.2f")
+        self.x_axis.setTickCount(5)
         self.y_axis = QValueAxis()
         self.y_axis.setTitleText(y_label)
+        self.y_axis.setLabelFormat(y_format)
+        self.y_axis.setTickCount(5)
         chart.addAxis(self.x_axis, Qt.AlignmentFlag.AlignBottom)
         chart.addAxis(self.y_axis, Qt.AlignmentFlag.AlignLeft)
         self.series: dict[str, QLineSeries] = {}
@@ -66,13 +73,14 @@ class LivePlots(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.temperature = _Chart("Temperature", "T (K)")
-        self.temperature.line("temperature_K", "T")
+        self.temperature = _Chart("T (K)", "%.0f")
+        self.temperature.line("temperature_K", "temperature")
         self.temperature.line("target", "target", dashed=True)
-        self.energy = _Chart("Energy", "kJ/mol")
+        self.energy = _Chart("E (kJ/mol)", "%.0f")
         for key, name in ENERGIES:
             self.energy.line(key, name)
-        layout = QHBoxLayout(self)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.temperature)
         layout.addWidget(self.energy)
         self.target_K: float | None = None

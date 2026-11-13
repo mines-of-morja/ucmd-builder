@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 
 import shiboken6
-from PySide6.QtCore import QThread
+from PySide6.QtCore import Qt, QThread
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
@@ -73,10 +73,13 @@ class MainWindow(QMainWindow):
         self.properties = PropertiesPanel()
         self.components = ComponentsPanel(self.document)
         self._dock("Components", self.components, "left")
-        self._dock("Properties", self.properties, "right")
+        properties_dock = self._dock("Properties", self.properties, "right")
         self._dock("Log", self.log, "bottom")
         self.run_panel = RunPanel()
-        self._dock("Run", self.run_panel, "bottom")
+        run_dock = self._dock("Run", self.run_panel, "right")
+        self.splitDockWidget(properties_dock, run_dock, Qt.Orientation.Vertical)
+        self.resizeDocks([properties_dock, run_dock], [200, 700], Qt.Orientation.Vertical)
+        self.resizeDocks([run_dock], [440], Qt.Orientation.Horizontal)
         self.run_panel.frame.connect(self.viewer.show_positions)
         self.run_panel.cancel_requested.connect(self.stop_run)
         self._actions()
@@ -95,8 +98,6 @@ class MainWindow(QMainWindow):
     # -- layout and actions --------------------------------------------------------------------
 
     def _dock(self, title: str, widget: QWidget, where: str) -> QDockWidget:
-        from PySide6.QtCore import Qt
-
         dock = QDockWidget(title, self)
         dock.setObjectName(title)
         dock.setWidget(widget)

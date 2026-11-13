@@ -261,17 +261,18 @@ class RunPanel(QWidget):
         self.frame_label = QLabel("–")
         for w in (self.play_button, self.slider):
             w.setEnabled(False)
+        self.status.setWordWrap(True)
         top = QHBoxLayout()
         top.addWidget(self.status, 1)
         top.addWidget(self.cancel_button)
         playback = QHBoxLayout()
         playback.addWidget(self.play_button)
         playback.addWidget(self.slider, 1)
-        playback.addWidget(self.frame_label)
         layout = QVBoxLayout(self)
         layout.addLayout(top)
         layout.addWidget(self.plots, 1)
         layout.addLayout(playback)
+        layout.addWidget(self.frame_label)
         self.tail: ThermoTail | None = None
         self.trajectory: Trajectory | None = None
         self.settings: RunSettings | None = None
