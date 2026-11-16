@@ -9,6 +9,7 @@ workspace. The plan is `../PLAN.md`, track B (§6).
 python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'   # once; includes the Packmol wheel
 .venv/bin/pip install -e '.[dev,gui-test]'                    # the GUI (PySide6, PyVista, h5py)
 .venv/bin/ucmd-build gui [RECIPE]                             # the GUI preview (design/B2a.md)
+./start-gui.sh [RECIPE]                                       # the same; creates .venv on first use
 .venv/bin/pytest                                              # spec fixtures from ../spec or $UCMD_SPEC_DIR
 .venv/bin/ruff check . && .venv/bin/ruff format --check .
 ```

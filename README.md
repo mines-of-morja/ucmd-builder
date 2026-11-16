@@ -5,8 +5,19 @@ spec-conformant system packages: molecules in, packed and parameterized periodic
 never runs MD; that is the job of `ucmd-engine`. Plan and shared spec:
 [UnitcellMD](https://github.com/mines-of-morja/UnitcellMD).
 
-**Status:** B1a, the headless builder, is under review. B1b (crystals, Wigner sampling, LAMMPS
-export) and the GUI (B2) follow.
+**Status:** B1a, the headless builder, and B2a, the GUI preview, are under review. B1b
+(crystals, Wigner sampling, LAMMPS export) and the rest of the GUI (B2b) follow.
+
+## The GUI
+
+```sh
+./start-gui.sh                          # from any directory; optionally a recipe to open
+./start-gui.sh examples/lp57-1M.toml
+```
+
+The first start creates `.venv` and installs the GUI from PyPI (PySide6, PyVista, VTK, h5py,
+Packmol; about 1.5 GB, no sudo). Build a box, look at it in 3D, export it, and run it with the
+engine (Run preview) while temperature and energies plot live; the trajectory plays afterwards.
 
 ## Quick start
 
