@@ -1,0 +1,21 @@
+format = "ucmd-build"
+version = "0.1"
+name = "untitled"
+seed = 1
+component = [
+    { name = "Ar", molecule = { library = "Ar" }, count = 10 },
+    { name = "Ar2", molecule = { library = "Ar" }, count = 2 },
+]
+
+[forcefield]
+source = "library"
+set = "argon-rahman1964"
+
+[box]
+length_nm = 3.0
+
+[packing]
+method = "packmol"
+tolerance_nm = 0.2
+timeout_s = 900.0
+max_attempts = 2000
