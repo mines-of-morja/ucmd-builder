@@ -1,0 +1,36 @@
+electrolyte,c_M,n_Li,n_PF6,n_EC,n_EMC,n_DMC,n_PC,n_MP,n_FEC,n_atoms,L_box_nm_approx,zeta,source
+EC:EMC 3:7 (w),0.1,9,9,336,664,0,0,0,0,13392,5.31,0.75,Lehnert2025 SI Table S1
+EC:EMC 3:7 (w),0.5,23,23,168,332,0,0,0,0,6844,4.24,0.75,Lehnert2025 SI Table S1
+EC:EMC 3:7 (w),1.0,47,47,168,332,0,0,0,0,7036,4.27,0.75,Lehnert2025 SI Table S1
+EC:EMC 3:7 (w),1.5,74,74,168,332,0,0,0,0,7252,4.34,0.75,Lehnert2025 SI Table S1
+EC:EMC 3:7 (w),2.0,103,103,168,332,0,0,0,0,7484,4.41,0.75,Lehnert2025 SI Table S1
+EC:EMC 3:7 (w),2.5,134,134,168,332,0,0,0,0,7732,4.46,0.75,Lehnert2025 SI Table S1
+EC:EMC 3:7 (w),3.0,168,168,168,332,0,0,0,0,8004,4.53,0.75,Lehnert2025 SI Table S1
+EC:DMC:PC 27:63:10 (v),0.1,8,8,320,0,588,92,0,0,11516,5.1,0.75,Lehnert2025 SI Table S1
+EC:DMC:PC 27:63:10 (v),0.5,20,20,160,0,294,46,0,0,5886,4.05,0.75,Lehnert2025 SI Table S1
+EC:DMC:PC 27:63:10 (v),1.0,42,42,160,0,294,46,0,0,6062,4.12,0.75,Lehnert2025 SI Table S1
+EC:DMC:PC 27:63:10 (v),1.5,65,65,160,0,294,46,0,0,6246,4.16,0.75,Lehnert2025 SI Table S1
+EC:DMC:PC 27:63:10 (v),2.0,90,90,160,0,294,46,0,0,6446,4.21,0.75,Lehnert2025 SI Table S1
+EC:DMC:PC 27:63:10 (v),2.5,117,117,160,0,294,46,0,0,6662,4.27,0.75,Lehnert2025 SI Table S1
+EC:DMC:PC 27:63:10 (v),3.0,146,146,160,0,294,46,0,0,6894,4.32,0.75,Lehnert2025 SI Table S1
+EC:EMC:MP 2:6:2 (v),0.1,9,9,276,534,0,0,190,0,13502,5.31,0.73,Lehnert2025 SI Table S1
+EC:EMC:MP 2:6:2 (v),0.5,23,23,138,267,0,0,95,0,6899,4.24,0.73,Lehnert2025 SI Table S1
+EC:EMC:MP 2:6:2 (v),1.0,48,48,138,267,0,0,95,0,7099,4.3,0.73,Lehnert2025 SI Table S1
+EC:EMC:MP 2:6:2 (v),1.5,75,75,138,267,0,0,95,0,7315,4.36,0.73,Lehnert2025 SI Table S1
+EC:EMC:MP 2:6:2 (v),2.0,104,104,138,267,0,0,95,0,7547,4.42,0.73,Lehnert2025 SI Table S1
+EC:EMC:MP 2:6:2 (v),2.5,135,135,138,267,0,0,95,0,7795,4.48,0.73,Lehnert2025 SI Table S1
+EC:EMC:MP 2:6:2 (v),3.0,170,170,138,267,0,0,95,0,8075,4.55,0.73,Lehnert2025 SI Table S1
+EC:DMC 1:1 (w),0.1,7,7,506,0,494,0,0,0,11044,4.88,,estimate (calibrated on Lehnert EC:EMC)
+EC:DMC 1:1 (w),0.5,19,19,253,0,247,0,0,0,5646,3.98,,estimate (calibrated on Lehnert EC:EMC)
+EC:DMC 1:1 (w),1.0,39,39,253,0,247,0,0,0,5806,4.02,,estimate (calibrated on Lehnert EC:EMC)
+EC:DMC 1:1 (w),1.5,61,61,253,0,247,0,0,0,5982,4.07,,estimate (calibrated on Lehnert EC:EMC)
+EC:DMC 1:1 (w),2.0,85,85,253,0,247,0,0,0,6174,4.13,,estimate (calibrated on Lehnert EC:EMC)
+EC:DMC 1:1 (w),2.5,111,111,253,0,247,0,0,0,6382,4.19,,estimate (calibrated on Lehnert EC:EMC)
+EC:DMC 1:1 (w),3.0,139,139,253,0,247,0,0,0,6606,4.25,,estimate (calibrated on Lehnert EC:EMC)
+EMC:FEC 19:1 (w),0.1,10,10,0,951,0,0,0,49,14835,5.5,,estimate (calibrated on Lehnert EC:EMC)
+EMC:FEC 19:1 (w),0.5,26,26,0,475,0,0,0,25,7583,4.42,,estimate (calibrated on Lehnert EC:EMC)
+EMC:FEC 19:1 (w),1.0,53,53,0,475,0,0,0,25,7799,4.45,,estimate (calibrated on Lehnert EC:EMC)
+EMC:FEC 19:1 (w),1.5,83,83,0,475,0,0,0,25,8039,4.51,,estimate (calibrated on Lehnert EC:EMC)
+EMC:FEC 19:1 (w),2.0,115,115,0,475,0,0,0,25,8295,4.57,,estimate (calibrated on Lehnert EC:EMC)
+EMC:FEC 19:1 (w),2.5,150,150,0,475,0,0,0,25,8575,4.64,,estimate (calibrated on Lehnert EC:EMC)
+EMC:FEC 19:1 (w),3.0,188,188,0,475,0,0,0,25,8879,4.7,,estimate (calibrated on Lehnert EC:EMC)

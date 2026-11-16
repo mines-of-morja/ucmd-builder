@@ -1,0 +1,28 @@
+# 0.1 M LiPF6 in EC:EMC:MP 2:6:2 (v): 13502 atoms.
+# Counts: Lehnert2025 SI Table S1. Box edge: approximate initial box from the author's table
+# (examples/EC/boxes.csv); the density comes from NPT later.
+# Ion charge scale ζ = 0.73 (Lehnert 2025, SI Table S3).
+# Builds once a cited parameter source exists for MP (examples/EC/README.md).
+format = "ucmd-build"
+version = "0.1"
+name = "ec-emc-mp_2-6-2v_0.1M"
+description = "0.1 M LiPF6 in EC:EMC:MP 2:6:2 (v); counts: Lehnert2025 SI Table S1"
+seed = 20261116
+component = [
+    { name = "Li", molecule = { library = "Li" }, count = 9, charge_scale = 0.73 },
+    { name = "PF6", molecule = { library = "PF6" }, count = 9, charge_scale = 0.73 },
+    { name = "EC", molecule = { library = "EC" }, count = 276 },
+    { name = "EMC", molecule = { library = "EMC" }, count = 534 },
+    { name = "MP", molecule = { smiles = "CCC(=O)OC" }, count = 190 },
+]
+
+[forcefield]
+source = "library"
+set = "opls-aa-carbonates"
+
+[box]
+length_nm = 5.31
+
+[packing]
+method = "packmol"
+tolerance_nm = 0.2

@@ -1,0 +1,27 @@
+# 2.5 M LiPF6 in EMC:FEC 19:1 (w): 8575 atoms.
+# Counts: estimate (calibrated on Lehnert EC:EMC). Box edge: approximate initial box from the author's table
+# (examples/EC/boxes.csv); the density comes from NPT later.
+# Ion charge scale ζ: not set in the table (ions unscaled); to be decided.
+# Builds once a cited parameter source exists for FEC (examples/EC/README.md).
+format = "ucmd-build"
+version = "0.1"
+name = "emc-fec_19-1w_2.5M"
+description = "2.5 M LiPF6 in EMC:FEC 19:1 (w); counts: estimate (calibrated on Lehnert EC:EMC)"
+seed = 20261116
+component = [
+    { name = "Li", molecule = { library = "Li" }, count = 150 },
+    { name = "PF6", molecule = { library = "PF6" }, count = 150 },
+    { name = "EMC", molecule = { library = "EMC" }, count = 475 },
+    { name = "FEC", molecule = { smiles = "O=C1OCC(F)O1" }, count = 25 },
+]
+
+[forcefield]
+source = "library"
+set = "opls-aa-carbonates"
+
+[box]
+length_nm = 4.64
+
+[packing]
+method = "packmol"
+tolerance_nm = 0.2
