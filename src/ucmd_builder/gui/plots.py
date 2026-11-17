@@ -3,7 +3,9 @@
 - **Energies:** potential, kinetic, total and conserved energy.
 - **Conservation:** H − H₀, the change of the conserved energy since the first row. Its slope
   is the drift: a check of the time step and the integrator.
-- **Pressure:** the virial pressure (bar).
+- **Pressure:** the pressure P = (2K + tr W)/(3V) in bar, split into its kinetic part 2K/(3V)
+  (atoms carrying momentum, as in an ideal gas) and the part of the forces, tr W/(3V) (the
+  rest), with a moving average over MOVING_AVERAGE_PS of the total to show a plateau.
 - **Volume:** the cell volume (nm³); it changes under a barostat (NPT).
 
 A summary line under the tabs gives means over the second half of the table and the drift of H
@@ -12,14 +14,17 @@ A summary line under the tabs gives means over the second half of the table and 
 
 from __future__ import annotations
 
+import numpy as np
 from PySide6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
 from PySide6.QtCore import QMargins, QPointF, Qt
 from PySide6.QtGui import QPainter, QPen
 from PySide6.QtWidgets import QLabel, QTabWidget, QVBoxLayout, QWidget
 
+from ..constants import BAR_PER_KJMOL_NM3
 from .thermo import ThermoTail, summary
 
 MIN_CHART_HEIGHT = 230
+MOVING_AVERAGE_PS = 1.0
 ENERGIES = (
     ("potential_kjmol", "potential"),
     ("kinetic_kjmol", "kinetic"),
@@ -90,7 +95,12 @@ class LivePlots(QWidget):
         self.conservation = _Chart("H − H₀ (kJ/mol)", "%.1f")
         self.conservation.line("conserved_change", "conserved energy − first value")
         self.pressure = _Chart("P (bar)", "%.0f")
-        self.pressure.line("pressure_bar", "virial pressure")
+        self.pressure.line("pressure_bar", "total")
+        self.pressure.line("pressure_kinetic", "kinetic 2K/3V")
+        self.pressure.line("pressure_forces", "forces W/3V")
+        self.pressure.line(
+            "pressure_average", f"total, {MOVING_AVERAGE_PS:g} ps average", dashed=True
+        )
         self.volume = _Chart("V (nm³)", "%.2f")
         self.volume.line("volume_nm3", "cell volume")
         self.tabs = QTabWidget()
@@ -134,6 +144,9 @@ class LivePlots(QWidget):
             values = tail.column(key)
             if len(values) == len(t):
                 chart.set_data(key, t, values)
+        parts = pressure_parts(tail)
+        for key, values in parts.items():
+            self.pressure.set_data(key, t, values)
         for chart in self.charts:
             chart.rescale()
         self.summary.setText(summary_text(summary(tail)))
@@ -143,6 +156,29 @@ class LivePlots(QWidget):
             if key in chart.series:
                 return chart.series[key].count()
         return 0
+
+
+def moving_average(t: np.ndarray, x: np.ndarray, window_ps: float) -> np.ndarray:
+    """Mean of x over the trailing window (t − window, t]; shorter at the start."""
+    c = np.concatenate([[0.0], np.cumsum(x)])
+    start = np.searchsorted(t, t - window_ps, side="right")
+    end = np.arange(1, len(t) + 1)
+    return (c[end] - c[start]) / (end - start)
+
+
+def pressure_parts(tail: ThermoTail) -> dict[str, np.ndarray]:
+    """Kinetic part 2K/(3V), the part of the forces (total − kinetic) and the moving average of
+    the total, in bar; empty if the table lacks a column."""
+    t, p = tail.column("time_ps"), tail.column("pressure_bar")
+    k, v = tail.column("kinetic_kjmol"), tail.column("volume_nm3")
+    if not len(t) or not (len(p) == len(k) == len(v) == len(t)):
+        return {}
+    kinetic = 2.0 * k / (3.0 * v) * BAR_PER_KJMOL_NM3
+    return {
+        "pressure_kinetic": kinetic,
+        "pressure_forces": p - kinetic,
+        "pressure_average": moving_average(t, p, MOVING_AVERAGE_PS),
+    }
 
 
 def summary_text(s: dict) -> str:

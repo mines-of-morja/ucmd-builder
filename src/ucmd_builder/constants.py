@@ -26,3 +26,6 @@ G_PER_CM3_IN_AMU_PER_NM3: Final = AVOGADRO_PER_MOL * 1e-21
 
 MOL_PER_L_IN_PER_NM3: Final = AVOGADRO_PER_MOL * 1e-24
 """1 mol/L as a number density in nm⁻³."""
+
+BAR_PER_KJMOL_NM3: Final = 1e25 / AVOGADRO_PER_MOL
+"""1 kJ mol⁻¹ nm⁻³ in bar (16.605…): 1e3 J / (N_A · 1e-27 m³) = 1e30/N_A Pa."""

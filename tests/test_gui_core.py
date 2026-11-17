@@ -261,3 +261,25 @@ def test_summary_of_the_thermo_table(tmp_path: Path) -> None:
     assert s["temperature_K"]["mean"] == pytest.approx(300.0)
     assert s["drift_kjmol_per_ps"] == pytest.approx(0.5)  # H grows by 0.5 kJ/mol per ps
     assert summary(ThermoTail(tmp_path / "missing.tsv")) == {}
+
+
+def test_pressure_parts_and_moving_average(tmp_path: Path) -> None:
+    pytest.importorskip("PySide6")
+    from ucmd_builder.constants import BAR_PER_KJMOL_NM3
+    from ucmd_builder.gui.plots import moving_average, pressure_parts
+
+    assert BAR_PER_KJMOL_NM3 == pytest.approx(16.605390671738466, rel=1e-15)
+    t = np.arange(0.0, 3.01, 0.5)
+    assert moving_average(t, np.arange(7.0), 1.0).tolist() == [0, 0.5, 1.5, 2.5, 3.5, 4.5, 5.5]
+    path = tmp_path / "thermo.tsv"
+    path.write_text(
+        "# step\ttime_ps\tkinetic_kjmol\tpressure_bar\tvolume_nm3\n"
+        "0\t0.0\t30.0\t500.0\t2.0\n10\t0.01\t15.0\t100.0\t2.0\n"
+    )
+    tail = ThermoTail(path)
+    tail.poll()
+    parts = pressure_parts(tail)
+    kinetic = 2 * 30.0 / (3 * 2.0) * BAR_PER_KJMOL_NM3  # 166.05 bar
+    assert parts["pressure_kinetic"][0] == pytest.approx(kinetic)
+    assert parts["pressure_forces"][0] == pytest.approx(500.0 - kinetic)
+    assert parts["pressure_average"].tolist() == [500.0, 300.0]
