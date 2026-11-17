@@ -15,7 +15,19 @@ EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 EC = EXAMPLES / "EC"
 
 
-@pytest.mark.parametrize("path", sorted(EXAMPLES.rglob("*.toml")), ids=lambda p: p.name)
+def example_recipes() -> list[Path]:
+    """Every recipe under examples/, but not local runs: `runs/` folders (gitignored) and the
+    GUI's `<package>.runs/` folders hold run.toml files, which are no recipes."""
+    return sorted(
+        p
+        for p in EXAMPLES.rglob("*.toml")
+        if not any(
+            part == "runs" or part.endswith(".runs") for part in p.relative_to(EXAMPLES).parts
+        )
+    )
+
+
+@pytest.mark.parametrize("path", example_recipes(), ids=lambda p: p.name)
 def test_every_example_recipe_parses(path: Path) -> None:
     load_recipe(path)
 

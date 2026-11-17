@@ -6,3 +6,5 @@ __pycache__/
 build/
 dist/
 *.egg-info/
+# Local runs of the example boxes (packages, run folders, trajectories): never committed.
+examples/EC/runs/
