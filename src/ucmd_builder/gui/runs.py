@@ -99,6 +99,8 @@ def _common(system: str, settings: RunSettings, cutoff_nm: float, title: str) ->
                 "cutoff_nm": round(cutoff_nm, 6),
                 "coulomb": "pme",
                 "ewald_tolerance": EWALD_TOLERANCE,
+                # OPLS-AA was parametrized with the LJ tail correction (ADR 0009 amendment)
+                "dispersion_correction": True,
             }
         ],
     }
