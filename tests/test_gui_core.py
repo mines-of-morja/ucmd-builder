@@ -201,27 +201,63 @@ def test_xyz_tail_reads_only_complete_frames(tmp_path: Path) -> None:
     assert len(read_trajectory(path)) == 1
 
 
-def test_find_run_accepts_run_folders_folders_of_runs_and_packages(tmp_path: Path) -> None:
-    from ucmd_builder.gui.runs import find_run
+def write_run(folder: Path, steps: int = 100, done: int | None = None) -> Path:
+    folder.mkdir(parents=True)
+    (folder / "run.toml").write_text(
+        f'system = "x.ucsys"\ntitle = "{folder.name}"\n[run]\nsteps = {steps}\n'
+        '[output.thermo]\nfile = "thermo.tsv"\n[output.trajectory]\nfile = "t.h5"\n'
+    )
+    if done is not None:
+        (folder / "out").mkdir()
+        rows = "".join(f"{s}\t{s / 1000}\t300.0\n" for s in range(0, done + 1, 10))
+        (folder / "out" / "thermo.tsv").write_text("# step\ttime_ps\ttemperature_K\n" + rows)
+    return folder
 
-    package = tmp_path / "box.ucsys"
-    package.mkdir()
-    (package / "system.json").write_text("{}")
-    runs = tmp_path / "box.ucsys.runs"
-    for name, outputs in (
-        ("20260101-100000", True),
-        ("20260101-110000", True),
-        ("20260101-120000", False),
-    ):
-        (runs / name).mkdir(parents=True)
-        (runs / name / "run.toml").write_text('system = "x"\n')
-        if outputs:
-            (runs / name / "out").mkdir()
-    newest_with_outputs = runs / "20260101-110000" / "run.toml"
-    assert find_run(runs / "20260101-100000") == (runs / "20260101-100000" / "run.toml", None)
-    for choice in (runs, package):
-        path, note = find_run(choice)
-        assert path == newest_with_outputs
-        assert "3 run(s) in box.ucsys.runs" in note and "20260101-110000" in note
-    with pytest.raises(FileNotFoundError, match="no run in"):
-        find_run(tmp_path)
+
+def test_scan_runs_finds_every_run_below_any_folder(tmp_path: Path) -> None:
+    import time
+
+    from ucmd_builder.gui.runs import scan_runs
+
+    # examples/EC/runs: packages with their <package>.runs folders
+    ec = tmp_path / "EC" / "runs"
+    (ec / "a.ucsys").mkdir(parents=True)
+    (ec / "a.ucsys" / "system.json").write_text("{}")
+    write_run(ec / "a.ucsys.runs" / "20260101-100000")  # minimized, never ran
+    write_run(ec / "a.ucsys.runs" / "20260101-110000", done=100)
+    # a study: runs/<system>/<T>, and views/ with symbolic links to them
+    study = tmp_path / "study"
+    write_run(study / "runs" / "s1" / "T20C", done=40)
+    (study / "views" / "by-T" / "T20C").mkdir(parents=True)
+    (study / "views" / "by-T" / "T20C" / "s1").symlink_to(study / "runs" / "s1" / "T20C")
+    runs = scan_runs(ec)
+    assert [r.run_dir.name for r in runs] == ["20260101-100000", "20260101-110000"]
+    assert [r.state for r in runs] == ["no output", "complete"]
+    assert runs[1].last_step == 100 and runs[1].trajectory == "h5md"
+    assert scan_runs(ec / "a.ucsys") == runs  # a package: its runs next to it
+    (study_run,) = scan_runs(study)  # the view's link is not a second run
+    assert study_run.last_step == 40 and study_run.state == "running?"  # changed just now
+    old = time.time() - 3600
+    import os
+
+    os.utime(study_run.run_dir / "out" / "thermo.tsv", (old, old))
+    os.utime(study_run.run_toml, (old, old))
+    assert scan_runs(study)[0].state == "stopped"
+    assert scan_runs(tmp_path / "nothing") == []
+
+
+def test_summary_of_the_thermo_table(tmp_path: Path) -> None:
+    from ucmd_builder.gui.thermo import summary
+
+    path = tmp_path / "thermo.tsv"
+    rows = [f"{k}\t{k / 100}\t{300 + (-1) ** k}\t{-5.0 + 0.5 * k / 100}" for k in range(0, 11)]
+    path.write_text(
+        "# step\ttime_ps\ttemperature_K\tconserved_energy_kjmol\n" + "\n".join(rows) + "\n"
+    )
+    tail = ThermoTail(path)
+    tail.poll()
+    s = summary(tail)
+    assert s["window_ps"] == (0.05, 0.1) and s["rows"] == 6
+    assert s["temperature_K"]["mean"] == pytest.approx(300.0)
+    assert s["drift_kjmol_per_ps"] == pytest.approx(0.5)  # H grows by 0.5 kJ/mol per ps
+    assert summary(ThermoTail(tmp_path / "missing.tsv")) == {}

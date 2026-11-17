@@ -1,6 +1,12 @@
-"""Live plots of temperature and energies from the thermo table (design/B2a.md §7).
+"""Plots of the thermo table (design/B2a.md §7): temperature on top, then tabs.
 
-QtCharts is part of PySide6, so no plotting library is added.
+- **Energies:** potential, kinetic, total and conserved energy.
+- **Conservation:** H − H₀, the change of the conserved energy since the first row. Its slope
+  is the drift: a check of the time step and the integrator.
+- **Pressure:** the virial pressure (bar).
+
+A summary line under the tabs gives means over the second half of the table and the drift of H
+(`thermo.summary`). QtCharts is part of PySide6, so no plotting library is added.
 """
 
 from __future__ import annotations
@@ -8,13 +14,14 @@ from __future__ import annotations
 from PySide6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
 from PySide6.QtCore import QMargins, QPointF, Qt
 from PySide6.QtGui import QPainter, QPen
-from PySide6.QtWidgets import QVBoxLayout, QWidget
+from PySide6.QtWidgets import QLabel, QTabWidget, QVBoxLayout, QWidget
 
-from .thermo import ThermoTail
+from .thermo import ThermoTail, summary
 
 MIN_CHART_HEIGHT = 230
 ENERGIES = (
     ("potential_kjmol", "potential"),
+    ("kinetic_kjmol", "kinetic"),
     ("total_kjmol", "total"),
     ("conserved_energy_kjmol", "conserved"),
 )
@@ -69,7 +76,7 @@ class _Chart(QChartView):
 
 
 class LivePlots(QWidget):
-    """Temperature with its target, and potential, total and conserved energy."""
+    """Temperature with its target; energies, conservation and pressure as tabs; a summary."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -79,17 +86,31 @@ class LivePlots(QWidget):
         self.energy = _Chart("E (kJ/mol)", "%.0f")
         for key, name in ENERGIES:
             self.energy.line(key, name)
+        self.conservation = _Chart("H − H₀ (kJ/mol)", "%.1f")
+        self.conservation.line("conserved_change", "conserved energy − first value")
+        self.pressure = _Chart("P (bar)", "%.0f")
+        self.pressure.line("pressure_bar", "virial pressure")
+        self.tabs = QTabWidget()
+        self.tabs.addTab(self.energy, "Energies")
+        self.tabs.addTab(self.conservation, "Conservation")
+        self.tabs.addTab(self.pressure, "Pressure")
+        self.summary = QLabel("–")
+        self.summary.setWordWrap(True)
+        self.summary.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.temperature)
-        layout.addWidget(self.energy)
+        layout.addWidget(self.tabs)
+        layout.addWidget(self.summary)
         self.target_K: float | None = None
+        self.charts = (self.temperature, self.energy, self.conservation, self.pressure)
 
     def reset(self, target_K: float | None) -> None:
         self.target_K = target_K
-        for chart in (self.temperature, self.energy):
+        for chart in self.charts:
             for series in chart.series.values():
                 series.clear()
+        self.summary.setText("–")
 
     def update_from(self, tail: ThermoTail) -> None:
         t = tail.column("time_ps")
@@ -102,11 +123,35 @@ class LivePlots(QWidget):
             values = tail.column(key)
             if len(values) == len(t):
                 self.energy.set_data(key, t, values)
-        self.temperature.rescale()
-        self.energy.rescale()
+        h = tail.column("conserved_energy_kjmol")
+        if len(h) == len(t):
+            self.conservation.set_data("conserved_change", t, h - h[0])
+        p = tail.column("pressure_bar")
+        if len(p) == len(t):
+            self.pressure.set_data("pressure_bar", t, p)
+        for chart in self.charts:
+            chart.rescale()
+        self.summary.setText(summary_text(summary(tail)))
 
     def points(self, key: str) -> int:
-        for chart in (self.temperature, self.energy):
+        for chart in self.charts:
             if key in chart.series:
                 return chart.series[key].count()
         return 0
+
+
+def summary_text(s: dict) -> str:
+    if not s:
+        return "–"
+    lo, hi = s["window_ps"]
+    parts = [f"{lo:.2f}–{hi:.2f} ps:"]
+    for key, label, unit, digits in (
+        ("temperature_K", "⟨T⟩", "K", 1),
+        ("pressure_bar", "⟨P⟩", "bar", 0),
+        ("potential_kjmol", "⟨E_pot⟩", "kJ/mol", 0),
+    ):
+        if key in s:
+            parts.append(f"{label} {s[key]['mean']:.{digits}f} ± {s[key]['sd']:.{digits}f} {unit}")
+    if "drift_kjmol_per_ps" in s:
+        parts.append(f"drift of H {s['drift_kjmol_per_ps']:.2f} kJ/mol/ps")
+    return "; ".join(parts[:1]) + " " + "; ".join(parts[1:])

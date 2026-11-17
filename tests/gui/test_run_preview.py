@@ -213,3 +213,46 @@ def test_a_run_that_is_still_going_is_followed(
         assert len(panel.trajectory) == 11
     finally:
         engine.kill()
+
+
+def test_a_folder_with_several_runs_offers_a_choice(
+    qtbot, window, tmp_path: Path, monkeypatch
+) -> None:
+    """Open run on e.g. examples/EC/runs: every run below is listed; the chosen one opens."""
+    from ucmd_builder.gui.run_preview import RunBrowser
+
+    fake_engine(tmp_path, monkeypatch)
+    first = window.start_run(RunSettings(length_ps=0.02, frame_every=10))
+    qtbot.waitUntil(lambda: not window.is_running(), timeout=60_000)
+    second = window.start_run(RunSettings(length_ps=0.04, frame_every=10, temperature_K=320.0))
+    qtbot.waitUntil(lambda: not window.is_running(), timeout=60_000)
+    offered = []
+
+    def choose(folder, runs):
+        offered.append((folder, runs))
+        browser = RunBrowser(folder, runs)
+        assert browser.chosen().run_dir in (first, second)  # preselected: newest with output
+        browser.filter.setText("no-such-run")
+        assert browser.chosen() is None  # the selected row is filtered out
+        browser.filter.setText("")
+        browser.select(next(k for k, r in enumerate(runs) if r.run_dir == first))
+        return browser.chosen()
+
+    window.choose_run = choose
+    folder = window.package_path.parent  # holds the package and its .runs folder
+    assert window.open_run(folder), window.log.toPlainText()
+    (_folder, runs) = offered[0]
+    assert {r.run_dir for r in runs} >= {first, second}
+    assert all(r.state == "complete" for r in runs if r.run_dir in (first, second))
+    panel = window.run_panel
+    assert panel.outputs.run_dir == first and panel.plots.points("temperature_K") == 3
+    assert panel.plots.points("pressure_bar") == 3
+    assert panel.plots.points("conserved_change") == 3
+    assert "⟨T⟩" in panel.plots.summary.text() and "drift of H" in panel.plots.summary.text()
+    window.choose_run = lambda folder, runs: None  # Cancel
+    assert not window.open_run(folder)
+
+
+def test_a_folder_without_runs_is_reported(window, tmp_path: Path) -> None:
+    assert not window.open_run(tmp_path)
+    assert "no run.toml in or below" in window.log.toPlainText()

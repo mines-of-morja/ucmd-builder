@@ -61,3 +61,29 @@ class ThermoTail:
             return np.empty(0)
         k = self.names.index(name)
         return np.array([row[k] for row in self._rows])
+
+
+SUMMARY_COLUMNS = ("temperature_K", "pressure_bar", "potential_kjmol", "total_kjmol")
+
+
+def summary(tail: ThermoTail, from_fraction: float = 0.5) -> dict:
+    """Means and standard deviations over the last half of the table, and the drift of H.
+
+    The drift is the least-squares slope of the conserved energy over the same window, in
+    kJ/mol/ps. A display aid for watching a run; analysis belongs to ucmd-analysis.
+    """
+    t = tail.column("time_ps")
+    if len(t) == 0:
+        return {}
+    window = t >= t[-1] * from_fraction
+    out: dict = {"window_ps": (float(t[window][0]), float(t[-1])), "rows": int(window.sum())}
+    for name in SUMMARY_COLUMNS:
+        values = tail.column(name)
+        if len(values) == len(t):
+            w = values[window]
+            sd = float(w.std(ddof=1)) if len(w) > 1 else 0.0
+            out[name] = {"mean": float(w.mean()), "sd": sd}
+    h = tail.column("conserved_energy_kjmol")
+    if len(h) == len(t) and window.sum() > 1 and t[window][-1] > t[window][0]:
+        out["drift_kjmol_per_ps"] = float(np.polyfit(t[window], h[window], 1)[0])
+    return out

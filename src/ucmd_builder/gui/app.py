@@ -34,8 +34,8 @@ from .components import ComponentsPanel
 from .composition import CompositionDialog
 from .document import RecipeDocument
 from .panels import LogPanel, PropertiesPanel
-from .run_preview import RunController, RunDialog, RunPanel, write_run
-from .runs import RunSettings, find_run, new_run_dir, preview_cutoff, run_outputs
+from .run_preview import RunBrowser, RunController, RunDialog, RunPanel, write_run
+from .runs import RunInfo, RunSettings, new_run_dir, preview_cutoff, run_outputs, scan_runs
 from .scene import Scene, read_package
 from .viewer import Viewer, make_qt_viewer
 
@@ -250,6 +250,11 @@ class MainWindow(QMainWindow):
         if path:
             self.save_recipe(path)
 
+    def choose_run(self, folder: Path, runs: list[RunInfo]) -> RunInfo | None:
+        """Let the user pick one of several runs (tests replace it)."""
+        dialog = RunBrowser(folder, runs, self)
+        return dialog.chosen() if dialog.exec() == QDialog.DialogCode.Accepted else None
+
     def ask(self, question: str) -> bool:
         """A yes/no question to the user (tests replace it)."""
         return QMessageBox.question(self, TITLE, question) == QMessageBox.StandardButton.Yes
@@ -425,21 +430,29 @@ class MainWindow(QMainWindow):
     def open_run(self, path: Path | str) -> bool:
         """Show a run: its package, its thermo plots and its trajectory to play.
 
-        `path` is a run folder or its run.toml, a folder of runs, or a package with runs (then
-        the newest run is shown). The run may come from the GUI, a study or `ucmd run`. A run
-        that has not reached its last step is followed: plots and XYZ frames keep growing.
+        `path` is a run folder or its run.toml. Any other folder (a folder of runs, a study,
+        `examples/EC/runs`) or a package is searched for runs: one is opened directly, of
+        several the user chooses (`choose_run`). The run may come from the GUI, a study or
+        `ucmd run`. A run short of its last step is followed: plots and XYZ frames keep growing.
         """
         if self.is_running():
             self.log.add("a run is going; stop it before opening another")
             return False
+        path = Path(path)
+        if not (path.is_file() or (path / "run.toml").is_file()):
+            runs = scan_runs(path) if path.is_dir() else []
+            if not runs:
+                self.log.add(f"cannot open run: no run.toml in or below {path}")
+                return False
+            chosen = runs[0] if len(runs) == 1 else self.choose_run(path, runs)
+            if chosen is None:
+                return False
+            path = chosen.run_toml
         try:
-            run_toml, note = find_run(path)
-            outputs = run_outputs(run_toml)
+            outputs = run_outputs(path)
         except (OSError, ValueError) as e:
             self.log.add(f"cannot open run: {e}")
             return False
-        if note:
-            self.log.add(note)
         if not outputs.system.is_dir():
             self.log.add(
                 f"cannot open run {path}: its package {outputs.system} does not exist "
@@ -475,7 +488,7 @@ class MainWindow(QMainWindow):
             runs = self.package_path.parent / f"{self.package_path.name}.runs"
             start = str(runs if runs.is_dir() else self.package_path.parent)
         path = QFileDialog.getExistingDirectory(
-            self, "Open run: a run folder, a folder of runs, or a package", start
+            self, "Open run: a run folder, or any folder with runs below it", start
         )
         if path:
             self.open_run(path)

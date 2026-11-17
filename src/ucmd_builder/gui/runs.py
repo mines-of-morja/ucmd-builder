@@ -176,35 +176,95 @@ class RunOutputs:
         return self.run_toml.parent
 
 
-def find_run(path: Path | str) -> tuple[Path, str | None]:
-    """The run.toml that `path` means, and a note if it had to choose.
+RECENT_S = 120.0  # an incomplete run whose table changed this recently is probably running
 
-    Accepts a run.toml, a run folder, a folder of run folders (`<package>.runs/`), or a package
-    whose `<package>.runs/` sits next to it. Of several runs it takes the newest that has
-    outputs (run folders are named by date and time). Raises FileNotFoundError otherwise.
+
+@dataclass(frozen=True)
+class RunInfo:
+    """One run found on disk, for the run browser."""
+
+    run_toml: Path
+    title: str
+    steps: int
+    last_step: int | None  # the last step in its thermo table; None without a table
+    trajectory: str  # "xyz", "h5md" or "none"
+    modified: float  # seconds since the epoch: the newest of run.toml and the thermo table
+
+    @property
+    def run_dir(self) -> Path:
+        return self.run_toml.parent
+
+    @property
+    def state(self) -> str:
+        if self.last_step is None:
+            return "no output"
+        if self.last_step >= self.steps:
+            return "complete"
+        return "running?" if time.time() - self.modified < RECENT_S else "stopped"
+
+
+def last_step(thermo: Path) -> int | None:
+    """The step of the last complete row of a thermo table, reading only its head and tail."""
+    try:
+        with thermo.open("rb") as fh:
+            header = fh.readline().decode("utf-8")
+            fh.seek(0, os.SEEK_END)
+            size = fh.tell()
+            fh.seek(max(0, size - 8192))
+            tail = fh.read().decode("utf-8", errors="replace")
+    except OSError:
+        return None
+    names = header.lstrip("# ").rstrip("\n").split("\t")
+    if "step" not in names:
+        return None
+    for line in reversed(tail.split("\n")[:-1]):  # the part after the last newline is partial
+        parts = line.split("\t")
+        if not line.startswith("#") and len(parts) == len(names):
+            try:
+                return int(float(parts[names.index("step")]))
+            except ValueError:
+                return None
+    return None
+
+
+def run_info(run_toml: Path) -> RunInfo:
+    out = run_outputs(run_toml)
+    thermo_time = out.thermo.stat().st_mtime if out.thermo and out.thermo.is_file() else 0.0
+    if out.trajectory is None:
+        trajectory = "none"
+    else:
+        trajectory = "xyz" if out.trajectory.suffix == ".xyz" else "h5md"
+    return RunInfo(
+        run_toml=run_toml,
+        title=out.title,
+        steps=out.steps,
+        last_step=last_step(out.thermo) if out.thermo else None,
+        trajectory=trajectory,
+        modified=max(run_toml.stat().st_mtime, thermo_time),
+    )
+
+
+def scan_runs(path: Path | str) -> list[RunInfo]:
+    """Every run (a folder with run.toml) below `path`, sorted by path.
+
+    `path` may be any folder: a run folder, `<package>.runs`, a study, `examples/EC/runs`. For a
+    package, its runs next to it (`<package>.runs`) are scanned. Symbolic links are not
+    followed, so a study's views/ do not list a run twice. Unreadable run.toml files are
+    skipped.
     """
     path = Path(path)
-    if path.is_file():
-        return path, None
-    if (path / "run.toml").is_file():
-        return path / "run.toml", None
-    folder = path
-    if (path / "system.json").is_file():  # a package: its runs are next to it
-        folder = path.parent / f"{path.name}.runs"
-    runs = (
-        sorted(d for d in folder.glob("*") if (d / "run.toml").is_file()) if folder.is_dir() else []
-    )
-    if not runs:
-        raise FileNotFoundError(
-            f"no run in {path}: choose a run folder (with run.toml), a folder of runs "
-            "(<package>.runs) or a package that has runs"
-        )
-    with_outputs = [d for d in runs if (d / "out").is_dir()]
-    chosen = (with_outputs or runs)[-1]
-    note = None
-    if len(runs) > 1 or folder != path:
-        note = f"{len(runs)} run(s) in {folder.name}; opened the newest with outputs: {chosen.name}"
-    return chosen / "run.toml", note
+    if (path / "system.json").is_file():
+        path = path.parent / f"{path.name}.runs"
+    found = []
+    for root, dirs, files in os.walk(path):
+        if "run.toml" in files:
+            try:
+                found.append(run_info(Path(root) / "run.toml"))
+            except (OSError, ValueError):
+                pass
+        # never inside outputs or packages; a run folder may still hold other runs
+        dirs[:] = sorted(d for d in dirs if d != "out" and not d.endswith(".ucsys"))
+    return sorted(found, key=lambda r: str(r.run_toml))
 
 
 def run_outputs(path: Path | str) -> RunOutputs:
@@ -214,7 +274,8 @@ def run_outputs(path: Path | str) -> RunOutputs:
     relative to its directory, and output files to `[output] directory` (default "out").
     Raises OSError if there is no run.toml, ValueError if it lacks a key the GUI needs.
     """
-    run_toml, _note = find_run(path)
+    path = Path(path)
+    run_toml = path / "run.toml" if path.is_dir() else path
     with run_toml.open("rb") as fh:
         try:
             doc = tomllib.load(fh)

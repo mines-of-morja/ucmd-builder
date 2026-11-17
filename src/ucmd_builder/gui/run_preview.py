@@ -8,10 +8,12 @@ writes a checkpoint, closes its files and exits with status 143.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QProcess, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -20,11 +22,15 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
+    QLineEdit,
     QPlainTextEdit,
     QPushButton,
     QSlider,
     QSpinBox,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -33,6 +39,7 @@ from ..profile import executable, load_profile
 from .plots import LivePlots
 from .runs import (
     THERMOSTATS,
+    RunInfo,
     RunOutputs,
     RunSettings,
     preview_cutoff,
@@ -173,6 +180,86 @@ class RunDialog(QDialog):
         if path and self.ask(f"Write [executables] ucmd = {path!r} into the machine profile?"):
             set_executable("ucmd", Path(path))
             self.refresh()
+
+
+class RunBrowser(QDialog):
+    """The runs found below a folder; the user picks one to open."""
+
+    COLUMNS = ("run", "title", "steps", "state", "trajectory", "changed")
+
+    def __init__(self, folder: Path, runs: list[RunInfo], parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(f"Open run — {len(runs)} runs in {folder.name}")
+        self.runs = runs
+        self.filter = QLineEdit()
+        self.filter.setPlaceholderText("filter, e.g. ec-emc 1.0M T20C")
+        self.table = QTableWidget(len(runs), len(self.COLUMNS))
+        self.table.setHorizontalHeaderLabels(self.COLUMNS)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.verticalHeader().setVisible(False)
+        for row, run in enumerate(runs):
+            done = "–" if run.last_step is None else f"{run.last_step} / {run.steps}"
+            changed = time.strftime("%Y-%m-%d %H:%M", time.localtime(run.modified))
+            cells = (
+                run.run_dir.relative_to(folder).as_posix()
+                if run.run_dir.is_relative_to(folder)
+                else str(run.run_dir),
+                run.title,
+                done,
+                run.state,
+                run.trajectory,
+                changed,
+            )
+            for col, text in enumerate(cells):
+                item = QTableWidgetItem(text)
+                item.setData(Qt.ItemDataRole.UserRole, row)
+                self.table.setItem(row, col, item)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.table.setSortingEnabled(True)
+        with_output = [k for k, r in enumerate(runs) if r.last_step is not None] or list(
+            range(len(runs))
+        )
+        newest = max(with_output, key=lambda k: runs[k].modified)
+        self.select(newest)
+        self.filter.textChanged.connect(self._filter)
+        self.table.doubleClicked.connect(lambda _index: self.accept())
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Open | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel(f"Runs below {folder}. Double-click one, or select it and Open."))
+        layout.addWidget(self.filter)
+        layout.addWidget(self.table, 1)
+        layout.addWidget(buttons)
+        self.resize(1000, 600)
+
+    def _row_of(self, index: int) -> int:
+        for row in range(self.table.rowCount()):
+            if self.table.item(row, 0).data(Qt.ItemDataRole.UserRole) == index:
+                return row
+        return -1
+
+    def select(self, index: int) -> None:
+        """Select runs[index] in the table, whatever the sort order."""
+        self.table.selectRow(self._row_of(index))
+
+    def _filter(self, text: str) -> None:
+        words = text.lower().split()
+        for row in range(self.table.rowCount()):
+            line = " ".join(self.table.item(row, c).text() for c in range(len(self.COLUMNS)))
+            self.table.setRowHidden(row, not all(w in line.lower() for w in words))
+
+    def chosen(self) -> RunInfo | None:
+        rows = self.table.selectionModel().selectedRows()
+        if not rows or self.table.isRowHidden(rows[0].row()):
+            return None
+        return self.runs[self.table.item(rows[0].row(), 0).data(Qt.ItemDataRole.UserRole)]
 
 
 class RunController(QObject):
