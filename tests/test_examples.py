@@ -34,15 +34,17 @@ def test_ec_recipes_are_generated_from_the_table(tmp_path: Path, monkeypatch) ->
         )
 
 
-def test_ec_emc_atom_counts_match_the_table() -> None:
-    size = {
-        m: load_template("opls-aa-carbonates", m).graph.n_atoms for m in ("Li", "PF6", "EC", "EMC")
-    }
+def test_every_ec_box_has_the_table_atom_count() -> None:
+    """All 35 rows: every molecule is a library template, and the atoms add up to n_atoms."""
+    spec = importlib.util.spec_from_file_location("make_recipes", EC / "make_recipes.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    size = {m: load_template("opls-aa-carbonates", m).graph.n_atoms for m in module.ORDER}
     with (EC / "boxes.csv").open(newline="") as fh:
-        rows = [r for r in csv.DictReader(fh) if r["electrolyte"].startswith("EC:EMC 3:7")]
-    assert len(rows) == 7
+        rows = list(csv.DictReader(fh))
+    assert len(rows) == 35
     for row in rows:
-        name = f"ec-emc_3-7w_{row['c_M']}M"
+        name = module.slug(row["electrolyte"], row["c_M"])
         recipe = load_recipe(EC / "recipes" / f"{name}.toml")
         atoms = sum(size[c.molecule.value] * c.count for c in recipe.components)
         assert atoms == int(row["n_atoms"]), name

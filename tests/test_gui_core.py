@@ -146,3 +146,33 @@ def test_set_executable_keeps_the_rest_of_the_profile(tmp_path: Path) -> None:
     import tomllib
 
     assert tomllib.loads(fresh.read_text())["executables"]["ucmd"].endswith("/u")
+
+
+def test_run_outputs_follow_the_run_toml(tmp_path: Path) -> None:
+    from ucmd_builder.gui.runs import run_outputs
+
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "run.toml").write_text(
+        'spec_version = "0.1.0"\nsystem = "../box.ucsys"\ntitle = "a run"\n'
+        "[run]\nsteps = 50\n"
+        '[thermostat]\nkind = "csvr"\ntemperature_K = 300.0\ntau_ps = 0.1\n'
+        '[output]\ndirectory = "results"\n'
+        '[output.thermo]\nfile = "t.tsv"\nevery = 10\n'
+    )
+    out = run_outputs(run)  # the folder, or the file itself
+    assert out == run_outputs(run / "run.toml")
+    assert out.run_dir == run and out.title == "a run" and out.steps == 50
+    assert out.system == run / "../box.ucsys"
+    assert out.thermo == run / "results" / "t.tsv"
+    assert out.trajectory is None  # no [output.trajectory]
+    assert out.target_K == 300.0
+    (run / "run.toml").write_text('system = "p.ucsys"\n[output.trajectory]\nfile = "x.h5"\n')
+    out = run_outputs(run)
+    assert out.trajectory == run / "out" / "x.h5"  # the spec's default directory
+    assert out.target_K is None and out.thermo is None
+    (run / "run.toml").write_text("title = 'no system'\n")
+    with pytest.raises(ValueError, match="system"):
+        run_outputs(run)
+    with pytest.raises(OSError):
+        run_outputs(tmp_path / "nowhere")

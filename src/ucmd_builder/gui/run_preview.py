@@ -31,7 +31,14 @@ from PySide6.QtWidgets import (
 
 from ..profile import executable, load_profile
 from .plots import LivePlots
-from .runs import THERMOSTATS, RunSettings, preview_cutoff, run_files, set_executable
+from .runs import (
+    THERMOSTATS,
+    RunOutputs,
+    RunSettings,
+    preview_cutoff,
+    run_files,
+    set_executable,
+)
 from .scene import Scene
 from .thermo import ThermoTail
 from .trajectory import Trajectory, read_trajectory
@@ -251,7 +258,7 @@ class RunPanel(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.status = QLabel("No run yet. Export a package, then Run preview.")
+        self.status = QLabel("No run yet. Build, then Run; or open an earlier run.")
         self.cancel_button = QPushButton("Stop run")
         self.cancel_button.setEnabled(False)
         self.cancel_button.clicked.connect(self.cancel_requested)
@@ -275,7 +282,7 @@ class RunPanel(QWidget):
         layout.addWidget(self.frame_label)
         self.tail: ThermoTail | None = None
         self.trajectory: Trajectory | None = None
-        self.settings: RunSettings | None = None
+        self.outputs: RunOutputs | None = None
         self._poll = QTimer(self)
         self._poll.setInterval(500)
         self._poll.timeout.connect(self.poll)
@@ -285,47 +292,69 @@ class RunPanel(QWidget):
         self.play_button.clicked.connect(self.toggle_play)
         self.slider.valueChanged.connect(self.show_frame)
 
-    def begin(self, run_dir: Path, settings: RunSettings) -> None:
-        self.settings = settings
-        self.tail = ThermoTail(run_dir / "out" / "thermo.tsv")
+    def _reset(self, outputs: RunOutputs) -> None:
+        self.outputs = outputs
+        self.tail = ThermoTail(outputs.thermo) if outputs.thermo is not None else None
         self.trajectory = None
         self._player.stop()
+        self.play_button.setText("Play")
         self.play_button.setEnabled(False)
         self.slider.setEnabled(False)
         self.frame_label.setText("–")
-        self.plots.reset(settings.temperature_K)
+        self.plots.reset(outputs.target_K)
+
+    def begin(self, outputs: RunOutputs) -> None:
+        """A run that is starting: follow its thermo table until `end`."""
+        self._reset(outputs)
         self.cancel_button.setEnabled(True)
-        self.status.setText(f"starting in {run_dir}")
+        self.status.setText(f"starting in {outputs.run_dir}")
         self._poll.start()
 
     def poll(self) -> None:
-        if self.tail is None or self.settings is None:
+        if self.tail is None or self.outputs is None:
             return
         if self.tail.poll():
             self.plots.update_from(self.tail)
             steps = self.tail.column("step")
             temperature = self.tail.column("temperature_K")
-            self.status.setText(
-                f"step {int(steps[-1])} of {self.settings.steps}, T = {temperature[-1]:.1f} K"
-            )
+            text = f"step {int(steps[-1])} of {self.outputs.steps}"
+            if len(temperature):
+                text += f", T = {temperature[-1]:.1f} K"
+            self.status.setText(text)
 
-    def end(self, run_dir: Path, message: str) -> None:
+    def end(self, message: str) -> None:
+        """The run has ended: read the rest of the table, then load the trajectory."""
         self._poll.stop()
         self.poll()
         self.cancel_button.setEnabled(False)
         self.status.setText(f"{self.status.text()} — {message}")
-        path = run_dir / "out" / "trajectory.h5"
-        if path.is_file():
-            try:
-                self.trajectory = read_trajectory(path)
-            except (OSError, KeyError) as e:
-                self.status.setText(f"{self.status.text()}; trajectory not readable: {e}")
-                return
-            if len(self.trajectory):
-                self.slider.setRange(0, len(self.trajectory) - 1)
-                self.slider.setEnabled(True)
-                self.play_button.setEnabled(True)
-                self.show_frame(0)
+        self._load_trajectory()
+
+    def show_run(self, outputs: RunOutputs) -> None:
+        """A finished run, e.g. one from an earlier session or the command line."""
+        self._reset(outputs)
+        self.cancel_button.setEnabled(False)
+        self.status.setText("")
+        self.poll()
+        progress = self.status.text() or "no thermo table"
+        self.status.setText(f"{outputs.title} ({outputs.run_dir}): {progress}")
+        self._load_trajectory()
+
+    def _load_trajectory(self) -> None:
+        path = self.outputs.trajectory if self.outputs is not None else None
+        if path is None or not path.is_file():
+            self.status.setText(f"{self.status.text()}; no trajectory")
+            return
+        try:
+            self.trajectory = read_trajectory(path)
+        except (OSError, KeyError) as e:
+            self.status.setText(f"{self.status.text()}; trajectory not readable: {e}")
+            return
+        if len(self.trajectory):
+            self.slider.setRange(0, len(self.trajectory) - 1)
+            self.slider.setEnabled(True)
+            self.play_button.setEnabled(True)
+            self.show_frame(0)
 
     def show_frame(self, k: int) -> None:
         if self.trajectory is None or not 0 <= k < len(self.trajectory):

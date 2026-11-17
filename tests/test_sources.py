@@ -1,8 +1,8 @@
 """B1.3: force-field sources — library tables, the GROMACS importer, the registry, the test kit.
 
 The expected numbers below are copied from the sources named in each template (ADR 0009):
-LigParGen 3.0.1 output for EC and EMC, Jensen & Jorgensen (2006) for Li+, the CL&P database
-il.ff for PF6-, Wu/Tepper/Voth (2006) for SPC/Fw and Rahman (1964) for argon.
+LigParGen 3.0.1 output for EC, EMC, DMC, PC, MP and FEC, Jensen & Jorgensen (2006) for Li+, the
+CL&P database il.ff for PF6-, Wu/Tepper/Voth (2006) for SPC/Fw and Rahman (1964) for argon.
 """
 
 from __future__ import annotations
@@ -64,6 +64,30 @@ def test_emc_values_as_generated_by_ligpargen() -> None:
     assert charges["C00"] == 0.588387 and charges["O02"] == -0.530852  # carbonyl C and O
     assert abs(p.net_charge_e) < 1e-6
     assert len(p.atoms) == 15 and len(p.bonds) == 14 and len(p.impropers) == 1
+
+
+@pytest.mark.parametrize(
+    ("name", "counts", "charges"),
+    [
+        # (atoms, bonds, impropers); two charges as printed in LigParGen 3.0.1's LIG.gmx.itp,
+        # fetched 2026-11-17 (ADR 0009).
+        ("DMC", (12, 11, 1), {"C00": 0.586247, "O02": -0.530169}),
+        ("PC", (13, 13, 1), {"C04": 0.579112, "O05": -0.396004}),
+        ("MP", (14, 13, 1), {"C00": 0.437278, "O02": -0.463183}),
+        ("FEC", (10, 10, 1), {"C01": 0.584576, "F05": -0.122022}),
+    ],
+)
+def test_more_solvents_as_generated_by_ligpargen(
+    name: str, counts: tuple[int, int, int], charges: dict[str, float]
+) -> None:
+    t = load_template("opls-aa-carbonates", name)
+    p = t.parameters
+    assert (len(p.atoms), len(p.bonds), len(p.impropers)) == counts
+    by_name = {a.name: a.charge_e for a in p.atoms}
+    assert {k: by_name[k] for k in charges} == charges
+    assert abs(p.net_charge_e) < 1e-6
+    assert p.conventions.combination_rule == "geometric"
+    assert (p.conventions.scale_14_lj, p.conventions.scale_14_coulomb) == (0.5, 0.5)
 
 
 def test_li_jensen_jorgensen_2006_and_both_distributed_copies() -> None:
@@ -232,7 +256,7 @@ def ligpargen_style_itp(set_name: str, template: str) -> str:
 CITE = [{"what": "test topology", "citation": "written by the test from the library template"}]
 
 
-@pytest.mark.parametrize("template", ["EC", "EMC", "PF6", "Li"])
+@pytest.mark.parametrize("template", ["EC", "EMC", "DMC", "PC", "MP", "FEC", "PF6", "Li"])
 def test_gromacs_import_equals_the_library(tmp_path: Path, template: str) -> None:
     (tmp_path / "m.itp").write_text(ligpargen_style_itp("opls-aa-carbonates", template))
     mol = from_smiles(load_template("opls-aa-carbonates", template).graph.smiles, template)

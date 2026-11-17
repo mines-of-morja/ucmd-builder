@@ -2,7 +2,7 @@
 # Counts: Lehnert2025 SI Table S1. Box edge: approximate initial box from the author's table
 # (examples/EC/boxes.csv); the density comes from NPT later.
 # Ion charge scale ζ = 0.73 (Lehnert 2025, SI Table S3).
-# Builds once a cited parameter source exists for MP (examples/EC/README.md).
+# Build:  ucmd-build build examples/EC/recipes/ec-emc-mp_2-6-2v_0.5M.toml -o ec-emc-mp_2-6-2v_0.5M.ucsys
 format = "ucmd-build"
 version = "0.1"
 name = "ec-emc-mp_2-6-2v_0.5M"
@@ -13,7 +13,7 @@ component = [
     { name = "PF6", molecule = { library = "PF6" }, count = 23, charge_scale = 0.73 },
     { name = "EC", molecule = { library = "EC" }, count = 138 },
     { name = "EMC", molecule = { library = "EMC" }, count = 267 },
-    { name = "MP", molecule = { smiles = "CCC(=O)OC" }, count = 95 },
+    { name = "MP", molecule = { library = "MP" }, count = 95 },
 ]
 
 [forcefield]

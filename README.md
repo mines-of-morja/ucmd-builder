@@ -11,13 +11,14 @@ never runs MD; that is the job of `ucmd-engine`. Plan and shared spec:
 ## The GUI
 
 ```sh
-./start-gui.sh                          # from any directory; optionally a recipe to open
-./start-gui.sh examples/lp57-1M.toml
+./start-gui.sh                          # from any directory
+./start-gui.sh examples/lp57-1M.toml    # a recipe, a package (*.ucsys) or a finished run
 ```
 
 The first start creates `.venv` and installs the GUI from PyPI (PySide6, PyVista, VTK, h5py,
-Packmol; about 1.5 GB, no sudo). Build a box, look at it in 3D, export it, and run it with the
-engine (Run preview) while temperature and energies plot live; the trajectory plays afterwards.
+Packmol; about 1.5 GB, no sudo). Build a box, look at it in 3D, and run it with the engine
+(**Run…**) while temperature and energies plot live; the trajectory plays afterwards. **Open
+run…** shows any finished run again, also one started with `ucmd run` on the command line.
 
 ## Quick start
 

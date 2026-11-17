@@ -1,10 +1,11 @@
-"""Request EC and EMC parameters from the LigParGen server, as on 2026-11-12 (ADR 0009).
+"""Request solvent parameters from the LigParGen server (ADR 0009).
 
-    python3 fetch_ligpargen.py OUTDIR
+    python3 fetch_ligpargen.py OUTDIR [NAME ...]     # default: all molecules below
 
-Writes OUTDIR/{EC,EMC}/ with every file the server returns (LIG.gmx.itp, LIG.gmx.gro, …).
+Writes OUTDIR/NAME/ with every file the server returns (LIG.gmx.itp, LIG.gmx.gro, …).
+EC and EMC were fetched on 2026-11-12, DMC, PC, MP and FEC on 2026-11-17.
 The request is the one the web form sends: 1.14*CM1A-LBCC charges, net charge 0, no
-optimization rounds. Only the two SMILES are sent. The server's output may change with new
+optimization rounds. Only the SMILES are sent. The server's output may change with new
 LigParGen versions; run.sh checks that the topology is the one the library was transcribed
 from.
 """
@@ -15,12 +16,21 @@ import urllib.request
 from pathlib import Path
 
 API = "https://jorgensenresearch.com/api/lpg-run"
-MOLECULES = {"EC": "O=C1OCCO1", "EMC": "CCOC(=O)OC"}
+MOLECULES = {
+    "EC": "O=C1OCCO1",  # ethylene carbonate
+    "EMC": "CCOC(=O)OC",  # ethyl methyl carbonate
+    "DMC": "COC(=O)OC",  # dimethyl carbonate
+    "PC": "CC1COC(=O)O1",  # propylene carbonate (no stereo label; both enantiomers alike)
+    "MP": "CCC(=O)OC",  # methyl propionate
+    "FEC": "O=C1OCC(F)O1",  # fluoroethylene carbonate
+}
 
 
 def main() -> int:
     out = Path(sys.argv[1])
-    for name, smiles in MOLECULES.items():
+    names = sys.argv[2:] or list(MOLECULES)
+    for name in names:
+        smiles = MOLECULES[name]
         payload = {
             "smiles": smiles,
             "molfile": "",

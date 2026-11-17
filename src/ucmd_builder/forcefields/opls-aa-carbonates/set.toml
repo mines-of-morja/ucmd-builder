@@ -2,7 +2,7 @@
 name = "opls-aa-carbonates"
 family = "OPLS-AA"
 version = 1
-description = "OPLS-AA for LiPF6 in organic carbonates: LigParGen 1.14*CM1A-LBCC solvents (EC, EMC), Jensen-Jorgensen Li+, CL&P PF6-. Ion charges are unscaled; the charge scaling zeta is a recipe transform."
+description = "OPLS-AA for LiPF6 in organic carbonates: LigParGen 1.14*CM1A-LBCC solvents (EC, EMC, DMC, PC, MP, FEC), Jensen-Jorgensen Li+, CL&P PF6-. Ion charges are unscaled; the charge scaling zeta is a recipe transform."
 licence = "Values transcribed with citations from LigParGen output (no stated terms), Jensen & Jorgensen (2006) and the CL&P database il.ff (MIT, Copyright (c) 2019 Agilio Padua). No third-party files are included."
 
 [conventions]

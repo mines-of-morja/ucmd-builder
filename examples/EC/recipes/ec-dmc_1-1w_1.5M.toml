@@ -2,7 +2,7 @@
 # Counts: estimate (calibrated on Lehnert EC:EMC). Box edge: approximate initial box from the author's table
 # (examples/EC/boxes.csv); the density comes from NPT later.
 # Ion charge scale ζ: not set in the table (ions unscaled); to be decided.
-# Builds once a cited parameter source exists for DMC (examples/EC/README.md).
+# Build:  ucmd-build build examples/EC/recipes/ec-dmc_1-1w_1.5M.toml -o ec-dmc_1-1w_1.5M.ucsys
 format = "ucmd-build"
 version = "0.1"
 name = "ec-dmc_1-1w_1.5M"
@@ -12,7 +12,7 @@ component = [
     { name = "Li", molecule = { library = "Li" }, count = 61 },
     { name = "PF6", molecule = { library = "PF6" }, count = 61 },
     { name = "EC", molecule = { library = "EC" }, count = 253 },
-    { name = "DMC", molecule = { smiles = "COC(=O)OC" }, count = 247 },
+    { name = "DMC", molecule = { library = "DMC" }, count = 247 },
 ]
 
 [forcefield]

@@ -3,6 +3,8 @@
 #
 #   ./start-gui.sh                         an empty recipe
 #   ./start-gui.sh examples/lp57-1M.toml   open a recipe
+#   ./start-gui.sh box.ucsys               open a package
+#   ./start-gui.sh box.ucsys.runs/<run>    open a finished run: plots and trajectory playback
 #
 # Works from any directory. The first start creates .venv and installs the GUI from PyPI
 # (PySide6, PyVista, VTK, h5py and Packmol; about 1.5 GB, no sudo). Later starts are instant.

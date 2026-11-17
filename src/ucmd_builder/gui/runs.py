@@ -11,6 +11,7 @@ import math
 import os
 import re
 import time
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -147,6 +148,60 @@ def new_run_dir(package: Path) -> Path:
         candidate, k = base / f"{stamp}-{k}", k + 1
     candidate.mkdir(parents=True)
     return candidate
+
+
+@dataclass(frozen=True)
+class RunOutputs:
+    """Where a run's spec'd files are, read from its `run.toml` (spec/run-config.md §2)."""
+
+    run_toml: Path
+    title: str
+    system: Path  # the package the run starts from
+    thermo: Path | None  # None if the run writes no thermo table
+    trajectory: Path | None  # None if the run writes no trajectory
+    target_K: float | None  # the thermostat temperature, None without a thermostat
+    steps: int
+
+    @property
+    def run_dir(self) -> Path:
+        return self.run_toml.parent
+
+
+def run_outputs(path: Path | str) -> RunOutputs:
+    """The outputs of the run described by `path`: a `run.toml` or the directory holding one.
+
+    Works for any spec'd run, not only those the GUI wrote: every path in a `run.toml` is
+    relative to its directory, and output files to `[output] directory` (default "out").
+    Raises OSError if there is no run.toml, ValueError if it lacks a key the GUI needs.
+    """
+    path = Path(path)
+    run_toml = path / "run.toml" if path.is_dir() else path
+    with run_toml.open("rb") as fh:
+        try:
+            doc = tomllib.load(fh)
+        except tomllib.TOMLDecodeError as e:
+            raise ValueError(f"{run_toml}: {e}") from e
+    base = run_toml.parent
+    if not isinstance(doc.get("system"), str):
+        raise ValueError(f"{run_toml}: no 'system' package")
+    output = doc.get("output", {})
+    out_dir = base / output.get("directory", "out")
+
+    def output_file(table: str) -> Path | None:
+        entry = output.get(table)
+        return out_dir / entry["file"] if isinstance(entry, dict) and "file" in entry else None
+
+    thermostat = doc.get("thermostat")
+    target = thermostat.get("temperature_K") if isinstance(thermostat, dict) else None
+    return RunOutputs(
+        run_toml=run_toml,
+        title=str(doc.get("title", run_toml.parent.name)),
+        system=base / doc["system"],
+        thermo=output_file("thermo"),
+        trajectory=output_file("trajectory"),
+        target_K=float(target) if target is not None else None,
+        steps=int(doc.get("run", {}).get("steps", 0)),
+    )
 
 
 def default_profile_path() -> Path:

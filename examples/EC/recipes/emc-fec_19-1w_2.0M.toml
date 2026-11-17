@@ -2,7 +2,7 @@
 # Counts: estimate (calibrated on Lehnert EC:EMC). Box edge: approximate initial box from the author's table
 # (examples/EC/boxes.csv); the density comes from NPT later.
 # Ion charge scale ζ: not set in the table (ions unscaled); to be decided.
-# Builds once a cited parameter source exists for FEC (examples/EC/README.md).
+# Build:  ucmd-build build examples/EC/recipes/emc-fec_19-1w_2.0M.toml -o emc-fec_19-1w_2.0M.ucsys
 format = "ucmd-build"
 version = "0.1"
 name = "emc-fec_19-1w_2.0M"
@@ -12,7 +12,7 @@ component = [
     { name = "Li", molecule = { library = "Li" }, count = 115 },
     { name = "PF6", molecule = { library = "PF6" }, count = 115 },
     { name = "EMC", molecule = { library = "EMC" }, count = 475 },
-    { name = "FEC", molecule = { smiles = "O=C1OCC(F)O1" }, count = 25 },
+    { name = "FEC", molecule = { library = "FEC" }, count = 25 },
 ]
 
 [forcefield]

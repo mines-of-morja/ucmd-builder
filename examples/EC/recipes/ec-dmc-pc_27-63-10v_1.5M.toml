@@ -2,7 +2,7 @@
 # Counts: Lehnert2025 SI Table S1. Box edge: approximate initial box from the author's table
 # (examples/EC/boxes.csv); the density comes from NPT later.
 # Ion charge scale ζ = 0.75 (Lehnert 2025, SI Table S3).
-# Builds once a cited parameter source exists for DMC, PC (examples/EC/README.md).
+# Build:  ucmd-build build examples/EC/recipes/ec-dmc-pc_27-63-10v_1.5M.toml -o ec-dmc-pc_27-63-10v_1.5M.ucsys
 format = "ucmd-build"
 version = "0.1"
 name = "ec-dmc-pc_27-63-10v_1.5M"
@@ -12,8 +12,8 @@ component = [
     { name = "Li", molecule = { library = "Li" }, count = 65, charge_scale = 0.75 },
     { name = "PF6", molecule = { library = "PF6" }, count = 65, charge_scale = 0.75 },
     { name = "EC", molecule = { library = "EC" }, count = 160 },
-    { name = "DMC", molecule = { smiles = "COC(=O)OC" }, count = 294 },
-    { name = "PC", molecule = { smiles = "CC1COC(=O)O1" }, count = 46 },
+    { name = "DMC", molecule = { library = "DMC" }, count = 294 },
+    { name = "PC", molecule = { library = "PC" }, count = 46 },
 ]
 
 [forcefield]

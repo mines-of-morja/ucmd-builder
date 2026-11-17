@@ -142,7 +142,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("package", type=Path)
     p.set_defaults(func=_cmd_check)
     p = sub.add_parser("gui", help="the GUI preview: build, view and run systems")
-    p.add_argument("recipe", type=Path, nargs="?", help="a recipe to open")
+    p.add_argument(
+        "recipe",
+        type=Path,
+        nargs="?",
+        help="a recipe, a package (*.ucsys) or a run (its folder or run.toml) to open",
+    )
     p.set_defaults(func=_cmd_gui)
     args = ap.parse_args(argv)
     try:

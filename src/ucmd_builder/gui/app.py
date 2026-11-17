@@ -35,7 +35,7 @@ from .composition import CompositionDialog
 from .document import RecipeDocument
 from .panels import LogPanel, PropertiesPanel
 from .run_preview import RunController, RunDialog, RunPanel, write_run
-from .runs import RunSettings, new_run_dir, preview_cutoff
+from .runs import RunSettings, new_run_dir, preview_cutoff, run_outputs
 from .scene import Scene, read_package
 from .viewer import Viewer, make_qt_viewer
 
@@ -127,7 +127,8 @@ class MainWindow(QMainWindow):
         self.act_build = self._action("Build", self.start_build, "Ctrl+B")
         self.act_cancel = self._action("Cancel", self.cancel_build)
         self.act_export = self._action("Export package…", self._export_dialog, "Ctrl+E")
-        self.act_run = self._action("Run preview…", self._run_dialog, "Ctrl+R")
+        self.act_run = self._action("Run…", self._run_dialog, "Ctrl+R")
+        self.act_open_run = self._action("Open run…", self._open_run_dialog)
         self.act_images = self._action("Periodic images", self.viewer.show_images, "Ctrl+I")
         self.act_images.setCheckable(True)
         self.act_undo = self.document.undo_stack.createUndoAction(self, "Undo")
@@ -139,6 +140,7 @@ class MainWindow(QMainWindow):
             menu.addAction(a)
         menu.addSeparator()
         menu.addAction(self.act_open_package)
+        menu.addAction(self.act_open_run)
         menu.addAction(self.act_export)
         menu = self.menuBar().addMenu("&Edit")
         menu.addAction(self.act_undo)
@@ -150,6 +152,7 @@ class MainWindow(QMainWindow):
         menu.addAction(self.act_images)
         menu = self.menuBar().addMenu("&Run")
         menu.addAction(self.act_run)
+        menu.addAction(self.act_open_run)
         toolbar = self.addToolBar("Main")
         toolbar.setObjectName("Main")
         for a in (self.act_new, self.act_open, self.act_save):
@@ -163,6 +166,7 @@ class MainWindow(QMainWindow):
         toolbar.addSeparator()
         toolbar.addAction(self.act_export)
         toolbar.addAction(self.act_run)
+        toolbar.addAction(self.act_open_run)
         toolbar.addSeparator()
         toolbar.addAction(self.act_images)
         self.toolbar = toolbar
@@ -185,9 +189,9 @@ class MainWindow(QMainWindow):
         self.act_build.setEnabled(not building and bool(self.document.recipe.components))
         self.act_cancel.setEnabled(building)
         self.act_export.setEnabled(not building and self.built is not None)
-        self.act_run.setEnabled(
-            not building and not self.is_running() and self.package_path is not None
-        )
+        runnable = self.package_path is not None or self.built is not None
+        self.act_run.setEnabled(not building and not self.is_running() and runnable)
+        self.act_open_run.setEnabled(not building and not self.is_running())
 
     # -- recipe --------------------------------------------------------------------------------
 
@@ -357,8 +361,12 @@ class MainWindow(QMainWindow):
         return self.run is not None
 
     def _run_dialog(self) -> None:
+        if self.package_path is None and self.built is not None:
+            # The engine reads packages only: export the built system first.
+            self.log.add("the engine runs a package: choose where to export the built system")
+            self._export_dialog()
         if self.package_path is None or self.scene is None:
-            self.log.add("export the package (or open one) first")
+            self.log.add("build (and export) a system, or open a package, first")
             return
         dialog = RunDialog(self.package_path, self.scene, self.ask, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
@@ -397,7 +405,7 @@ class MainWindow(QMainWindow):
         self.run.line.connect(self.log.add)
         self.run.stage.connect(lambda stage: self.statusBar().showMessage(f"engine: {stage}"))
         self.run.finished.connect(self._run_finished)
-        self.run_panel.begin(run_dir, settings)
+        self.run_panel.begin(run_outputs(run_dir))
         self.run.start()
         self._update_actions()
         return run_dir
@@ -409,10 +417,68 @@ class MainWindow(QMainWindow):
     def _run_finished(self, code: int, message: str) -> None:
         self.log.add(f"run {message}")
         if self.run_dir is not None:
-            self.run_panel.end(self.run_dir, message)
+            self.run_panel.end(message)
         self.statusBar().showMessage(f"run {message}")
         self.run = None
         self._update_actions()
+
+    def open_run(self, path: Path | str) -> bool:
+        """Show a finished run: its package, its thermo plots and its trajectory to play.
+
+        `path` is a run directory or its run.toml; the run may come from the GUI or from
+        `ucmd run` on the command line.
+        """
+        if self.is_running():
+            self.log.add("a run is going; stop it before opening another")
+            return False
+        try:
+            outputs = run_outputs(path)
+        except (OSError, ValueError) as e:
+            self.log.add(f"cannot open run {path}: {e}")
+            return False
+        if not outputs.system.is_dir():
+            self.log.add(
+                f"cannot open run {path}: its package {outputs.system} does not exist "
+                "(for a GUI run: did the minimization finish?)"
+            )
+            return False
+        if not self.open_package(outputs.system):
+            return False
+        self.run_dir = outputs.run_dir
+        self.run_panel.show_run(outputs)
+        trajectory = self.run_panel.trajectory
+        if trajectory is not None and self.scene is not None:
+            if trajectory.positions_nm.shape[1] != self.scene.n_atoms:
+                self.log.add(
+                    f"the trajectory has {trajectory.positions_nm.shape[1]} atoms, the package "
+                    f"{self.scene.n_atoms}: not played"
+                )
+                self.run_panel.trajectory = None
+                self.run_panel.slider.setEnabled(False)
+                self.run_panel.play_button.setEnabled(False)
+                return False
+        frames = len(trajectory) if trajectory is not None else 0
+        rows = len(self.run_panel.tail) if self.run_panel.tail is not None else 0
+        self.log.add(f"opened run {outputs.run_dir}: {rows} thermo rows, {frames} frames")
+        return True
+
+    def _open_run_dialog(self) -> None:
+        start = ""
+        if self.package_path is not None:
+            runs = self.package_path.parent / f"{self.package_path.name}.runs"
+            start = str(runs if runs.is_dir() else self.package_path.parent)
+        path = QFileDialog.getExistingDirectory(self, "Open run (the folder with run.toml)", start)
+        if path:
+            self.open_run(path)
+
+    def open_path(self, path: Path | str) -> bool:
+        """Open what `path` is: a run (run.toml or its folder), a package, or a recipe."""
+        path = Path(path)
+        if path.name == "run.toml" or (path / "run.toml").is_file():
+            return self.open_run(path)
+        if (path / "system.json").is_file():
+            return self.open_package(path)
+        return self.open_recipe(path)
 
     # -- selection -----------------------------------------------------------------------------
 
@@ -450,6 +516,6 @@ def run_app(argv: list[str]) -> int:
     use_c_numeric_locale()
     window = MainWindow()
     if argv:
-        window.open_recipe(Path(argv[0]))
+        window.open_path(Path(argv[0]))
     window.show()
     return app.exec()

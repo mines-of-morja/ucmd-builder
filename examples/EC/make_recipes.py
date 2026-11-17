@@ -3,9 +3,8 @@
     .venv/bin/python examples/EC/make_recipes.py      # from the repo root; rewrites recipes/
 
 The counts are the table's. The box edge is the table's approximate value: an initial box for
-packing; the density comes later from NPT, as in Lehnert's protocol. Molecules without a
-template in the `opls-aa-carbonates` library (DMC, PC, MP, FEC) are given by SMILES; those
-recipes build once a cited parameter source for them exists (see README.md).
+packing; the density comes later from NPT, as in Lehnert's protocol. Every molecule is a
+template of the `opls-aa-carbonates` library (ADR 0009).
 """
 
 from __future__ import annotations
@@ -17,13 +16,6 @@ from pathlib import Path
 import tomli_w
 
 HERE = Path(__file__).resolve().parent
-LIBRARY = {"Li": "Li", "PF6": "PF6", "EC": "EC", "EMC": "EMC"}
-SMILES = {  # not (yet) in the library
-    "DMC": "COC(=O)OC",  # dimethyl carbonate
-    "PC": "CC1COC(=O)O1",  # propylene carbonate
-    "MP": "CCC(=O)OC",  # methyl propionate
-    "FEC": "O=C1OCC(F)O1",  # fluoroethylene carbonate
-}
 ORDER = ("Li", "PF6", "EC", "EMC", "DMC", "PC", "MP", "FEC")
 IONS = ("Li", "PF6")
 
@@ -36,17 +28,13 @@ def slug(electrolyte: str, c_m: str) -> str:
 
 def recipe(row: dict[str, str]) -> tuple[str, str]:
     name = slug(row["electrolyte"], row["c_M"])
-    pending = [m for m in SMILES if int(row[f"n_{m}"]) > 0]
     zeta = float(row["zeta"]) if row["zeta"] else None
     components = []
     for molecule in ORDER:
         count = int(row[f"n_{molecule}"])
         if count == 0:
             continue
-        spec = (
-            {"library": LIBRARY[molecule]} if molecule in LIBRARY else {"smiles": SMILES[molecule]}
-        )
-        entry = {"name": molecule, "molecule": spec, "count": count}
+        entry = {"name": molecule, "molecule": {"library": molecule}, "count": count}
         if molecule in IONS and zeta is not None:
             entry["charge_scale"] = zeta
         components.append(entry)
@@ -70,13 +58,7 @@ def recipe(row: dict[str, str]) -> tuple[str, str]:
         notes.append("# Ion charge scale ζ: not set in the table (ions unscaled); to be decided.")
     else:
         notes.append(f"# Ion charge scale ζ = {zeta} (Lehnert 2025, SI Table S3).")
-    if pending:
-        notes.append(
-            f"# Builds once a cited parameter source exists for {', '.join(pending)}"
-            " (examples/EC/README.md)."
-        )
-    else:
-        notes.append(f"# Build:  ucmd-build build examples/EC/recipes/{name}.toml -o {name}.ucsys")
+    notes.append(f"# Build:  ucmd-build build examples/EC/recipes/{name}.toml -o {name}.ucsys")
     return name, "\n".join(notes) + "\n" + tomli_w.dumps(doc)
 
 

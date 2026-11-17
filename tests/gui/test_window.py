@@ -115,6 +115,29 @@ def test_build_export_and_reopen(qtbot, window, small_recipe: Path, tmp_path: Pa
     assert read_package(out).n_atoms == scene.n_atoms
 
 
+def test_run_right_after_build_exports_first(
+    qtbot, window, small_recipe: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """Run is available once a system is built; it asks where to export the package."""
+    from PySide6.QtWidgets import QDialog, QFileDialog
+
+    from ucmd_builder.gui import app
+
+    window.open_recipe(small_recipe)
+    assert not window.act_run.isEnabled()  # nothing built yet
+    window.start_build()
+    qtbot.waitUntil(lambda: not window.is_building(), timeout=120_000)
+    assert window.act_run.isEnabled() and window.package_path is None
+    target = tmp_path / "chosen.ucsys"
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *a, **k: (str(target), ""))
+    shown = []
+    monkeypatch.setattr(app.RunDialog, "exec", lambda d: shown.append(d) or QDialog.Rejected)
+    window._run_dialog()
+    assert window.package_path == target and (target / "system.json").is_file()
+    assert len(shown) == 1 and shown[0].package == target  # then the run settings
+    assert "choose where to export" in window.log.toPlainText()
+
+
 def test_cancel_stops_a_build(qtbot, window, tmp_path: Path) -> None:
     text = (
         (EXAMPLES / "lp57-1M.toml")

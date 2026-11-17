@@ -104,3 +104,55 @@ def test_the_dialog_shows_the_files_it_will_write(
     text = dialog.preview.toPlainText()
     assert 'kind = "csvr"' in text and "# minimize.toml" not in text
     assert dialog.settings().steps == 2000
+
+
+def test_a_finished_run_opens_again(qtbot, window, tmp_path: Path, monkeypatch) -> None:
+    fake_engine(tmp_path, monkeypatch)
+    run_dir = window.start_run(RunSettings(length_ps=0.06, frame_every=10))
+    qtbot.waitUntil(lambda: not window.is_running(), timeout=60_000)
+    later = MainWindow(viewer=FakeViewer())  # e.g. the next session
+    qtbot.addWidget(later)
+    assert later.open_path(run_dir), later.log.toPlainText()
+    assert later.package_path == run_dir / "minimized.ucsys"  # the run's starting package
+    panel = later.run_panel
+    assert panel.plots.points("temperature_K") == 7
+    assert len(panel.trajectory) == 7 and panel.play_button.isEnabled()
+    panel.slider.setValue(6)
+    assert np.allclose(later.viewer.frames[-1], later.scene.positions_nm + 0.001 * 60)
+    assert "7 thermo rows, 7 frames" in later.log.toPlainText()
+
+
+def test_a_command_line_run_opens(qtbot, window, package: Path, tmp_path: Path) -> None:
+    """A run started with `ucmd run`, with its own output names, plays in the GUI."""
+    import os
+    import subprocess
+    import sys
+
+    run_dir = tmp_path / "cli-run"
+    run_dir.mkdir()
+    relative = Path(os.path.relpath(package, run_dir)).as_posix()
+    (run_dir / "run.toml").write_text(
+        f'spec_version = "0.1.0"\nsystem = "{relative}"\ntitle = "from the shell"\n'
+        "[run]\nsteps = 40\ntimestep_fs = 1.0\n"
+        '[thermostat]\nkind = "csvr"\ntemperature_K = 310.0\ntau_ps = 0.1\n'
+        '[output]\ndirectory = "results"\n'
+        '[output.thermo]\nfile = "energies.tsv"\nevery = 5\n'
+        '[output.trajectory]\nfile = "md.h5"\nevery = 20\n'
+    )
+    fake = Path(__file__).with_name("fake_ucmd.py")
+    env = {"FAKE_UCMD_DELAY": "0", "PATH": "/usr/bin:/bin"}
+    subprocess.run(
+        [sys.executable, str(fake), "run", str(run_dir / "run.toml")], check=True, env=env
+    )
+    assert window.open_path(run_dir / "run.toml"), window.log.toPlainText()
+    panel = window.run_panel
+    assert panel.plots.points("temperature_K") == 40 // 5 + 1
+    assert panel.plots.target_K == 310.0
+    assert len(panel.trajectory) == 3
+    assert "from the shell" in panel.status.text()
+
+
+def test_opening_a_run_without_its_package_is_refused(window, tmp_path: Path) -> None:
+    (tmp_path / "run.toml").write_text('system = "minimized.ucsys"\n')
+    assert not window.open_run(tmp_path)
+    assert "did the minimization finish?" in window.log.toPlainText()
