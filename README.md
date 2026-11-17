@@ -19,6 +19,8 @@ The first start creates `.venv` and installs the GUI from PyPI (PySide6, PyVista
 Packmol; about 1.5 GB, no sudo). Build a box, look at it in 3D, and run it with the engine
 (**Run…**) while temperature and energies plot live; the trajectory plays afterwards. **Open
 run…** shows any finished run again, also one started with `ucmd run` on the command line.
+The first run asks for the engine program: pick `ucmd-engine/target/release/ucmd`
+([docs/engine-for-the-gui.md](docs/engine-for-the-gui.md)).
 
 ## Quick start
 
