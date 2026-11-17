@@ -156,3 +156,60 @@ def test_opening_a_run_without_its_package_is_refused(window, tmp_path: Path) ->
     (tmp_path / "run.toml").write_text('system = "minimized.ucsys"\n')
     assert not window.open_run(tmp_path)
     assert "did the minimization finish?" in window.log.toPlainText()
+
+
+def test_xyz_frames_play_while_the_run_goes(qtbot, window, tmp_path: Path, monkeypatch) -> None:
+    fake_engine(tmp_path, monkeypatch)
+    monkeypatch.setenv("FAKE_UCMD_DELAY", "0.02")
+    window.start_run(RunSettings(length_ps=0.2, frame_every=20, minimize=False))
+    panel = window.run_panel
+    qtbot.waitUntil(
+        lambda: panel.trajectory is not None and len(panel.trajectory) >= 3, timeout=30_000
+    )
+    assert window.is_running()  # frames arrived before the end
+    assert panel.slider.value() == len(panel.trajectory) - 1  # the view follows the newest frame
+    qtbot.waitUntil(lambda: not window.is_running(), timeout=60_000)
+    assert len(panel.trajectory) == 200 // 20 + 1
+
+
+def test_h5md_frames_come_after_the_run(qtbot, window, tmp_path: Path, monkeypatch) -> None:
+    fake_engine(tmp_path, monkeypatch)
+    run_dir = window.start_run(
+        RunSettings(length_ps=0.05, frame_every=10, trajectory_format="h5md")
+    )
+    assert 'file = "trajectory.h5"' in (run_dir / "run.toml").read_text()
+    qtbot.waitUntil(lambda: not window.is_running(), timeout=60_000)
+    assert len(window.run_panel.trajectory) == 6
+
+
+def test_a_run_that_is_still_going_is_followed(
+    qtbot, window, package: Path, tmp_path: Path
+) -> None:
+    """E.g. a study run in another process: open it, and its plots and frames keep growing."""
+    import os
+    import subprocess
+    import sys
+
+    run_dir = tmp_path / "busy"
+    run_dir.mkdir()
+    (run_dir / "run.toml").write_text(
+        f'spec_version = "0.1.0"\nsystem = "{Path(os.path.relpath(package, run_dir)).as_posix()}"\n'
+        "[run]\nsteps = 200\ntimestep_fs = 1.0\n"
+        '[thermostat]\nkind = "csvr"\ntemperature_K = 300.0\ntau_ps = 0.1\n'
+        '[output]\n[output.thermo]\nfile = "thermo.tsv"\nevery = 10\n'
+        '[output.trajectory]\nfile = "trajectory.xyz"\nevery = 20\n'
+    )
+    fake = Path(__file__).with_name("fake_ucmd.py")
+    env = {"FAKE_UCMD_DELAY": "0.02", "PATH": "/usr/bin:/bin"}
+    engine = subprocess.Popen([sys.executable, str(fake), "run", "run.toml"], cwd=run_dir, env=env)
+    try:
+        qtbot.waitUntil(lambda: (run_dir / "out" / "thermo.tsv").is_file(), timeout=10_000)
+        assert window.open_path(run_dir), window.log.toPlainText()
+        panel = window.run_panel
+        assert panel.following and "following it while it grows" in window.log.toPlainText()
+        qtbot.waitUntil(lambda: not panel.following, timeout=30_000)  # it reached its last step
+        assert engine.wait(timeout=30) == 0
+        assert panel.plots.points("temperature_K") == 21
+        assert len(panel.trajectory) == 11
+    finally:
+        engine.kill()

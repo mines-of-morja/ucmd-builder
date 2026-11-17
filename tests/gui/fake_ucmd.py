@@ -1,7 +1,8 @@
 """A stand-in for the engine in GUI tests (design/B2a.md §9).
 
 `minimize <toml> --out <dir>` copies the package. `run <toml>` writes thermo lines step by
-step (spec/run-config.md columns), then an H5MD trajectory with `/particles/all/position`.
+step (spec/run-config.md columns). A `.xyz` trajectory gets each frame as it happens (in Å, as
+the engine writes it); a `.h5` trajectory is written at the end, with `/particles/all/position`.
 SIGTERM stops a run with status 143, as the real engine does. FAKE_UCMD_FAIL=1 fails like an
 engine error; FAKE_UCMD_DELAY sets the seconds per step.
 """
@@ -50,12 +51,14 @@ def main(argv: list[str]) -> int:
     steps = config["run"]["steps"]
     dt_ps = config["run"]["timestep_fs"] / 1000.0
     output = config["output"]
-    out = config_path.parent / output["directory"]
+    out = config_path.parent / output.get("directory", "out")  # the spec default
     out.mkdir(exist_ok=True)
     target = config["thermostat"]["temperature_K"]
     positions = np.load(package / "positions.npy")
     delay = float(os.environ.get("FAKE_UCMD_DELAY", "0.005"))
     frames, frame_steps, last = [], [], 0
+    traj_path = out / output["trajectory"]["file"]
+    xyz = traj_path.open("w") if traj_path.suffix == ".xyz" else None
     print(f"ucmd (fake): {len(positions)} atoms, steps 0..{steps}", file=sys.stderr, flush=True)
     with (out / output["thermo"]["file"]).open("w") as fh:
         fh.write(HEADER)
@@ -71,8 +74,19 @@ def main(argv: list[str]) -> int:
             if step % output["trajectory"]["every"] == 0:
                 frames.append(positions + 0.001 * step)
                 frame_steps.append(step)
+                if xyz is not None:
+                    xyz.write(
+                        f"{len(positions)}\nProperties=species:S:1:pos:R:3 step={step} "
+                        f"time_ps={step * dt_ps}\n"
+                    )
+                    for r in frames[-1] * 10.0:
+                        xyz.write(f"X {r[0]:.8f} {r[1]:.8f} {r[2]:.8f}\n")
+                    xyz.flush()
             time.sleep(delay)
-    write_h5md(out / output["trajectory"]["file"], frame_steps, dt_ps, frames)
+    if xyz is not None:
+        xyz.close()
+    else:
+        write_h5md(traj_path, frame_steps, dt_ps, frames)
     if stop:
         print(f"stopped by SIGTERM after step {last}", file=sys.stderr)
         return 143

@@ -28,7 +28,9 @@ python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'   # once; includes th
   - Only `ucmd_builder.gui` imports Qt, VTK or h5py (`tests/test_architecture.py`). The modules
     `gui/scene.py`, `gui/thermo.py`, `gui/runs.py` and `gui/elements.py` need no Qt.
   - The GUI starts the engine as an external program (`[executables] ucmd` in the machine
-    profile) and reads only spec'd files: the thermo table and the H5MD trajectory.
+    profile). It reads the thermo table, the H5MD trajectory (spec'd) and the engine's
+    extended-XYZ trajectory (in Å, one flushed frame at a time; GUI runs write it by default, so
+    frames show while the run goes). XYZ is not in spec v0.1.0 yet: proposed for v0.1.1.
   - Qt sets the process locale from the system; the GUI resets `LC_NUMERIC` to C, because a
     decimal comma breaks C-level number parsing (RDKit's XYZ reader read "0.89" as 0).
   - GUI tests run headless (`QT_QPA_PLATFORM=offscreen`), with a fake engine

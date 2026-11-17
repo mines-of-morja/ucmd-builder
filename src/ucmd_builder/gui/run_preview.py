@@ -41,7 +41,7 @@ from .runs import (
 )
 from .scene import Scene
 from .thermo import ThermoTail
-from .trajectory import Trajectory, read_trajectory
+from .trajectory import Trajectory, XyzTail, is_live_format, read_trajectory
 
 STOPPED = (130, 143)  # 128 + SIGINT, 128 + SIGTERM: the engine stopped gracefully
 
@@ -67,6 +67,9 @@ class RunDialog(QDialog):
         self.frames.setRange(1, 1_000_000)
         self.frames.setValue(defaults.frame_every)
         self.frames.setSuffix(" steps")
+        self.trajectory_format = QComboBox()
+        self.trajectory_format.addItem("XYZ: watch frames during the run", "xyz")
+        self.trajectory_format.addItem("H5MD: for analysis (frames after the run)", "h5md")
         self.seed = QSpinBox()
         self.seed.setRange(0, 2_000_000_000)
         self.seed.setValue(defaults.seed)
@@ -99,6 +102,7 @@ class RunDialog(QDialog):
         form.addRow("Coupling time τ", self.tau)
         form.addRow("", self.minimize)
         form.addRow("Frame every", self.frames)
+        form.addRow("Trajectory", self.trajectory_format)
         form.addRow("Seed", self.seed)
         form.addRow("Cutoff", self.cutoff_label)
         form.addRow("Threads", self.threads_label)
@@ -119,6 +123,7 @@ class RunDialog(QDialog):
         for spin in (self.frames, self.seed):
             spin.valueChanged.connect(self.refresh)
         self.thermostat.currentTextChanged.connect(self.refresh)
+        self.trajectory_format.currentIndexChanged.connect(self.refresh)
         self.minimize.toggled.connect(self.refresh)
         self.resize(640, 820)
         self.refresh()
@@ -144,6 +149,7 @@ class RunDialog(QDialog):
             minimize=self.minimize.isChecked(),
             frame_every=self.frames.value(),
             seed=self.seed.value(),
+            trajectory_format=self.trajectory_format.currentData(),
         )
 
     def refresh(self, *_args) -> None:
@@ -283,6 +289,8 @@ class RunPanel(QWidget):
         self.tail: ThermoTail | None = None
         self.trajectory: Trajectory | None = None
         self.outputs: RunOutputs | None = None
+        self.frames: XyzTail | None = None
+        self.following = False
         self._poll = QTimer(self)
         self._poll.setInterval(500)
         self._poll.timeout.connect(self.poll)
@@ -293,8 +301,13 @@ class RunPanel(QWidget):
         self.slider.valueChanged.connect(self.show_frame)
 
     def _reset(self, outputs: RunOutputs) -> None:
+        self._poll.stop()
+        self._prefix = ""
         self.outputs = outputs
         self.tail = ThermoTail(outputs.thermo) if outputs.thermo is not None else None
+        live = outputs.trajectory is not None and is_live_format(outputs.trajectory)
+        self.frames = XyzTail(outputs.trajectory) if live else None
+        self.following = False
         self.trajectory = None
         self._player.stop()
         self.play_button.setText("Play")
@@ -304,41 +317,89 @@ class RunPanel(QWidget):
         self.plots.reset(outputs.target_K)
 
     def begin(self, outputs: RunOutputs) -> None:
-        """A run that is starting: follow its thermo table until `end`."""
+        """A run that is starting: follow its thermo table (and XYZ frames) until `end`."""
         self._reset(outputs)
         self.cancel_button.setEnabled(True)
         self.status.setText(f"starting in {outputs.run_dir}")
         self._poll.start()
 
+    def complete(self) -> bool:
+        """Whether the thermo table has reached the last step of the run."""
+        if self.tail is None or self.outputs is None or not len(self.tail):
+            return False
+        return int(self.tail.column("step")[-1]) >= self.outputs.steps
+
     def poll(self) -> None:
-        if self.tail is None or self.outputs is None:
+        if self.outputs is None:
             return
-        if self.tail.poll():
+        if self.tail is not None and self.tail.poll():
             self.plots.update_from(self.tail)
             steps = self.tail.column("step")
             temperature = self.tail.column("temperature_K")
             text = f"step {int(steps[-1])} of {self.outputs.steps}"
             if len(temperature):
                 text += f", T = {temperature[-1]:.1f} K"
-            self.status.setText(text)
+            self.status.setText(f"{self._prefix}{text}")
+        if self.frames is not None:
+            try:
+                new = self.frames.poll()
+            except (OSError, ValueError) as e:
+                self.status.setText(f"{self.status.text()}; frames not readable: {e}")
+                self.frames = None
+                return
+            if new:
+                self._show(self.frames.trajectory())
+        if self.following and self.complete():  # an opened run has just finished
+            self.following = False
+            self._poll.stop()
+            if self.frames is None:
+                self._load_trajectory()
+
+    _prefix = ""
 
     def end(self, message: str) -> None:
-        """The run has ended: read the rest of the table, then load the trajectory."""
+        """The run has ended: read the rest of the table and frames, then the H5MD file."""
         self._poll.stop()
         self.poll()
         self.cancel_button.setEnabled(False)
         self.status.setText(f"{self.status.text()} — {message}")
-        self._load_trajectory()
+        if self.frames is None:
+            self._load_trajectory()
 
     def show_run(self, outputs: RunOutputs) -> None:
-        """A finished run, e.g. one from an earlier session or the command line."""
+        """A run opened from disk: finished, stopped, or still going (then it is followed)."""
         self._reset(outputs)
         self.cancel_button.setEnabled(False)
-        self.status.setText("")
+        self._prefix = f"{outputs.title} ({outputs.run_dir.name}): "
+        self.status.setText(f"{self._prefix}no thermo table yet")
         self.poll()
-        progress = self.status.text() or "no thermo table"
-        self.status.setText(f"{outputs.title} ({outputs.run_dir}): {progress}")
-        self._load_trajectory()
+        if self.complete():
+            if self.frames is None:
+                self._load_trajectory()
+            return
+        # Not at its last step: still running elsewhere, or stopped. Keep reading; H5MD frames
+        # follow once the run has ended.
+        self.following = True
+        self._poll.start()
+        if self.frames is None and self.outputs.trajectory is not None:
+            self.status.setText(f"{self.status.text()}; frames once the run has ended (H5MD)")
+
+    def stop_following(self) -> None:
+        self.following = False
+        self._poll.stop()
+
+    def _show(self, trajectory: Trajectory) -> None:
+        """New frames: keep the slider at the newest frame unless the user moved it back."""
+        at_end = not self.slider.isEnabled() or self.slider.value() == self.slider.maximum()
+        self.trajectory = trajectory
+        if not len(trajectory):
+            return
+        self.slider.setRange(0, len(trajectory) - 1)
+        self.slider.setEnabled(True)
+        self.play_button.setEnabled(True)
+        if at_end and not self._player.isActive():
+            self.slider.setValue(len(trajectory) - 1)
+        self.show_frame(self.slider.value())
 
     def _load_trajectory(self) -> None:
         path = self.outputs.trajectory if self.outputs is not None else None
@@ -346,14 +407,13 @@ class RunPanel(QWidget):
             self.status.setText(f"{self.status.text()}; no trajectory")
             return
         try:
-            self.trajectory = read_trajectory(path)
-        except (OSError, KeyError) as e:
+            trajectory = read_trajectory(path)
+        except (OSError, KeyError, ValueError) as e:
             self.status.setText(f"{self.status.text()}; trajectory not readable: {e}")
             return
-        if len(self.trajectory):
-            self.slider.setRange(0, len(self.trajectory) - 1)
-            self.slider.setEnabled(True)
-            self.play_button.setEnabled(True)
+        self._show(trajectory)
+        if len(trajectory):
+            self.slider.setValue(0)
             self.show_frame(0)
 
     def show_frame(self, k: int) -> None:

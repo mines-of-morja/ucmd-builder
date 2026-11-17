@@ -35,7 +35,7 @@ from .composition import CompositionDialog
 from .document import RecipeDocument
 from .panels import LogPanel, PropertiesPanel
 from .run_preview import RunController, RunDialog, RunPanel, write_run
-from .runs import RunSettings, new_run_dir, preview_cutoff, run_outputs
+from .runs import RunSettings, find_run, new_run_dir, preview_cutoff, run_outputs
 from .scene import Scene, read_package
 from .viewer import Viewer, make_qt_viewer
 
@@ -423,19 +423,23 @@ class MainWindow(QMainWindow):
         self._update_actions()
 
     def open_run(self, path: Path | str) -> bool:
-        """Show a finished run: its package, its thermo plots and its trajectory to play.
+        """Show a run: its package, its thermo plots and its trajectory to play.
 
-        `path` is a run directory or its run.toml; the run may come from the GUI or from
-        `ucmd run` on the command line.
+        `path` is a run folder or its run.toml, a folder of runs, or a package with runs (then
+        the newest run is shown). The run may come from the GUI, a study or `ucmd run`. A run
+        that has not reached its last step is followed: plots and XYZ frames keep growing.
         """
         if self.is_running():
             self.log.add("a run is going; stop it before opening another")
             return False
         try:
-            outputs = run_outputs(path)
+            run_toml, note = find_run(path)
+            outputs = run_outputs(run_toml)
         except (OSError, ValueError) as e:
-            self.log.add(f"cannot open run {path}: {e}")
+            self.log.add(f"cannot open run: {e}")
             return False
+        if note:
+            self.log.add(note)
         if not outputs.system.is_dir():
             self.log.add(
                 f"cannot open run {path}: its package {outputs.system} does not exist "
@@ -447,7 +451,7 @@ class MainWindow(QMainWindow):
         self.run_dir = outputs.run_dir
         self.run_panel.show_run(outputs)
         trajectory = self.run_panel.trajectory
-        if trajectory is not None and self.scene is not None:
+        if trajectory is not None and len(trajectory) and self.scene is not None:
             if trajectory.positions_nm.shape[1] != self.scene.n_atoms:
                 self.log.add(
                     f"the trajectory has {trajectory.positions_nm.shape[1]} atoms, the package "
@@ -459,7 +463,10 @@ class MainWindow(QMainWindow):
                 return False
         frames = len(trajectory) if trajectory is not None else 0
         rows = len(self.run_panel.tail) if self.run_panel.tail is not None else 0
-        self.log.add(f"opened run {outputs.run_dir}: {rows} thermo rows, {frames} frames")
+        following = "; following it while it grows" if self.run_panel.following else ""
+        self.log.add(
+            f"opened run {outputs.run_dir}: {rows} thermo rows, {frames} frames{following}"
+        )
         return True
 
     def _open_run_dialog(self) -> None:
@@ -467,17 +474,19 @@ class MainWindow(QMainWindow):
         if self.package_path is not None:
             runs = self.package_path.parent / f"{self.package_path.name}.runs"
             start = str(runs if runs.is_dir() else self.package_path.parent)
-        path = QFileDialog.getExistingDirectory(self, "Open run (the folder with run.toml)", start)
+        path = QFileDialog.getExistingDirectory(
+            self, "Open run: a run folder, a folder of runs, or a package", start
+        )
         if path:
             self.open_run(path)
 
     def open_path(self, path: Path | str) -> bool:
         """Open what `path` is: a run (run.toml or its folder), a package, or a recipe."""
         path = Path(path)
-        if path.name == "run.toml" or (path / "run.toml").is_file():
-            return self.open_run(path)
         if (path / "system.json").is_file():
             return self.open_package(path)
+        if path.name == "run.toml" or path.is_dir():
+            return self.open_run(path)
         return self.open_recipe(path)
 
     # -- selection -----------------------------------------------------------------------------

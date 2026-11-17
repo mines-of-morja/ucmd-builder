@@ -1,8 +1,10 @@
 """Run preview without Qt (design/B2a.md §7): settings, cutoff, run.toml, run directory, profile.
 
-The GUI starts the engine as an external program and uses only the spec'd files: it writes
-`run.toml` files into a run directory next to the package, reads the thermo table and the H5MD
-trajectory, and never touches checkpoints (their format is private to the engine).
+The GUI starts the engine as an external program: it writes `run.toml` files into a run
+directory next to the package and reads the thermo table and the trajectory. The trajectory is
+the engine's extended XYZ (frames readable while the run goes, the default for previews) or H5MD
+(spec'd, for analysis). The GUI never touches checkpoints (their format is private to the
+engine).
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ EWALD_TOLERANCE = 1e-5
 SKIN_NM = 0.2  # the engine's default neighbour-list skin
 CUTOFF_STEP_NM = 0.05
 THERMOSTATS = ("nose-hoover-chain", "csvr")
+TRAJECTORY_FORMATS = ("xyz", "h5md")  # xyz: watch frames during the run; h5md: for analysis
 
 
 @dataclass(frozen=True)
@@ -39,6 +42,7 @@ class RunSettings:
     minimize: bool = True
     frame_every: int = 100
     seed: int = 1
+    trajectory_format: str = "xyz"
 
     @property
     def steps(self) -> int:
@@ -130,7 +134,12 @@ def run_files(
             "output": {
                 "directory": "out",
                 "thermo": {"file": "thermo.tsv", "every": 10},
-                "trajectory": {"file": "trajectory.h5", "every": settings.frame_every},
+                "trajectory": {
+                    "file": "trajectory.xyz"
+                    if settings.trajectory_format == "xyz"
+                    else "trajectory.h5",
+                    "every": settings.frame_every,
+                },
                 "checkpoint": {"file": "checkpoint.ucchk", "every": 1000},
             },
         }
@@ -167,6 +176,37 @@ class RunOutputs:
         return self.run_toml.parent
 
 
+def find_run(path: Path | str) -> tuple[Path, str | None]:
+    """The run.toml that `path` means, and a note if it had to choose.
+
+    Accepts a run.toml, a run folder, a folder of run folders (`<package>.runs/`), or a package
+    whose `<package>.runs/` sits next to it. Of several runs it takes the newest that has
+    outputs (run folders are named by date and time). Raises FileNotFoundError otherwise.
+    """
+    path = Path(path)
+    if path.is_file():
+        return path, None
+    if (path / "run.toml").is_file():
+        return path / "run.toml", None
+    folder = path
+    if (path / "system.json").is_file():  # a package: its runs are next to it
+        folder = path.parent / f"{path.name}.runs"
+    runs = (
+        sorted(d for d in folder.glob("*") if (d / "run.toml").is_file()) if folder.is_dir() else []
+    )
+    if not runs:
+        raise FileNotFoundError(
+            f"no run in {path}: choose a run folder (with run.toml), a folder of runs "
+            "(<package>.runs) or a package that has runs"
+        )
+    with_outputs = [d for d in runs if (d / "out").is_dir()]
+    chosen = (with_outputs or runs)[-1]
+    note = None
+    if len(runs) > 1 or folder != path:
+        note = f"{len(runs)} run(s) in {folder.name}; opened the newest with outputs: {chosen.name}"
+    return chosen / "run.toml", note
+
+
 def run_outputs(path: Path | str) -> RunOutputs:
     """The outputs of the run described by `path`: a `run.toml` or the directory holding one.
 
@@ -174,8 +214,7 @@ def run_outputs(path: Path | str) -> RunOutputs:
     relative to its directory, and output files to `[output] directory` (default "out").
     Raises OSError if there is no run.toml, ValueError if it lacks a key the GUI needs.
     """
-    path = Path(path)
-    run_toml = path / "run.toml" if path.is_dir() else path
+    run_toml, _note = find_run(path)
     with run_toml.open("rb") as fh:
         try:
             doc = tomllib.load(fh)

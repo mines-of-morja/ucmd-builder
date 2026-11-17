@@ -176,3 +176,52 @@ def test_run_outputs_follow_the_run_toml(tmp_path: Path) -> None:
         run_outputs(run)
     with pytest.raises(OSError):
         run_outputs(tmp_path / "nowhere")
+
+
+def test_xyz_tail_reads_only_complete_frames(tmp_path: Path) -> None:
+    from ucmd_builder.gui.trajectory import XyzTail, read_trajectory
+
+    path = tmp_path / "t.xyz"
+    frame = (
+        '2\nLattice="10 0 0 0 10 0 0 0 10" Properties=species:S:1:pos:R:3 pbc="T T T" '
+        "step={s} time_ps={t}\nO 1.0 2.0 3.0\nH 4.0 5.0 {z}\n"
+    )
+    first, second = frame.format(s=0, t=0.0, z=6.0), frame.format(s=10, t=0.01, z=7.0)
+    tail = XyzTail(path)
+    assert tail.poll() == 0  # no file yet
+    path.write_text(first + second[:30])  # the second frame is still being written
+    assert tail.poll() == 1
+    path.write_text(first + second)
+    assert tail.poll() == 1 and tail.poll() == 0
+    traj = tail.trajectory()
+    assert traj.steps.tolist() == [0, 10] and traj.times_ps.tolist() == [0.0, 0.01]
+    assert np.allclose(traj.positions_nm[1], [[0.1, 0.2, 0.3], [0.4, 0.5, 0.7]])  # Å → nm
+    path.write_text(first)  # rewritten (a restart cut it back): read again from the start
+    assert tail.poll() == 1 and len(tail.trajectory()) == 1
+    assert len(read_trajectory(path)) == 1
+
+
+def test_find_run_accepts_run_folders_folders_of_runs_and_packages(tmp_path: Path) -> None:
+    from ucmd_builder.gui.runs import find_run
+
+    package = tmp_path / "box.ucsys"
+    package.mkdir()
+    (package / "system.json").write_text("{}")
+    runs = tmp_path / "box.ucsys.runs"
+    for name, outputs in (
+        ("20260101-100000", True),
+        ("20260101-110000", True),
+        ("20260101-120000", False),
+    ):
+        (runs / name).mkdir(parents=True)
+        (runs / name / "run.toml").write_text('system = "x"\n')
+        if outputs:
+            (runs / name / "out").mkdir()
+    newest_with_outputs = runs / "20260101-110000" / "run.toml"
+    assert find_run(runs / "20260101-100000") == (runs / "20260101-100000" / "run.toml", None)
+    for choice in (runs, package):
+        path, note = find_run(choice)
+        assert path == newest_with_outputs
+        assert "3 run(s) in box.ucsys.runs" in note and "20260101-110000" in note
+    with pytest.raises(FileNotFoundError, match="no run in"):
+        find_run(tmp_path)
