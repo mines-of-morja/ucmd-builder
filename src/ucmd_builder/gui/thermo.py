@@ -63,7 +63,7 @@ class ThermoTail:
         return np.array([row[k] for row in self._rows])
 
 
-SUMMARY_COLUMNS = ("temperature_K", "pressure_bar", "potential_kjmol", "total_kjmol")
+SUMMARY_COLUMNS = ("temperature_K", "pressure_bar", "potential_kjmol", "total_kjmol", "volume_nm3")
 
 
 def summary(tail: ThermoTail, from_fraction: float = 0.5) -> dict:

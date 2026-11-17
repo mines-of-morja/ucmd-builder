@@ -4,6 +4,7 @@
 - **Conservation:** H − H₀, the change of the conserved energy since the first row. Its slope
   is the drift: a check of the time step and the integrator.
 - **Pressure:** the virial pressure (bar).
+- **Volume:** the cell volume (nm³); it changes under a barostat (NPT).
 
 A summary line under the tabs gives means over the second half of the table and the drift of H
 (`thermo.summary`). QtCharts is part of PySide6, so no plotting library is added.
@@ -90,10 +91,13 @@ class LivePlots(QWidget):
         self.conservation.line("conserved_change", "conserved energy − first value")
         self.pressure = _Chart("P (bar)", "%.0f")
         self.pressure.line("pressure_bar", "virial pressure")
+        self.volume = _Chart("V (nm³)", "%.2f")
+        self.volume.line("volume_nm3", "cell volume")
         self.tabs = QTabWidget()
         self.tabs.addTab(self.energy, "Energies")
         self.tabs.addTab(self.conservation, "Conservation")
         self.tabs.addTab(self.pressure, "Pressure")
+        self.tabs.addTab(self.volume, "Volume")
         self.summary = QLabel("–")
         self.summary.setWordWrap(True)
         self.summary.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -103,7 +107,7 @@ class LivePlots(QWidget):
         layout.addWidget(self.tabs)
         layout.addWidget(self.summary)
         self.target_K: float | None = None
-        self.charts = (self.temperature, self.energy, self.conservation, self.pressure)
+        self.charts = (self.temperature, self.energy, self.conservation, self.pressure, self.volume)
 
     def reset(self, target_K: float | None) -> None:
         self.target_K = target_K
@@ -126,9 +130,10 @@ class LivePlots(QWidget):
         h = tail.column("conserved_energy_kjmol")
         if len(h) == len(t):
             self.conservation.set_data("conserved_change", t, h - h[0])
-        p = tail.column("pressure_bar")
-        if len(p) == len(t):
-            self.pressure.set_data("pressure_bar", t, p)
+        for chart, key in ((self.pressure, "pressure_bar"), (self.volume, "volume_nm3")):
+            values = tail.column(key)
+            if len(values) == len(t):
+                chart.set_data(key, t, values)
         for chart in self.charts:
             chart.rescale()
         self.summary.setText(summary_text(summary(tail)))
@@ -149,6 +154,7 @@ def summary_text(s: dict) -> str:
         ("temperature_K", "⟨T⟩", "K", 1),
         ("pressure_bar", "⟨P⟩", "bar", 0),
         ("potential_kjmol", "⟨E_pot⟩", "kJ/mol", 0),
+        ("volume_nm3", "⟨V⟩", "nm³", 2),
     ):
         if key in s:
             parts.append(f"{label} {s[key]['mean']:.{digits}f} ± {s[key]['sd']:.{digits}f} {unit}")

@@ -248,6 +248,7 @@ def test_a_folder_with_several_runs_offers_a_choice(
     assert panel.outputs.run_dir == first and panel.plots.points("temperature_K") == 3
     assert panel.plots.points("pressure_bar") == 3
     assert panel.plots.points("conserved_change") == 3
+    assert panel.plots.points("volume_nm3") == 3
     assert "⟨T⟩" in panel.plots.summary.text() and "drift of H" in panel.plots.summary.text()
     window.choose_run = lambda folder, runs: None  # Cancel
     assert not window.open_run(folder)
