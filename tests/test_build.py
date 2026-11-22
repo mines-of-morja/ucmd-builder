@@ -142,3 +142,82 @@ def test_a_charged_system_is_a_recipe_error(tmp_path: Path) -> None:
     assert "count = 2" in text
     with pytest.raises(BuildError, match=r"net charge of \+0\.75 e"):
         build(parse_recipe(text, path=tmp_path / "b.toml"))
+
+
+# Spec 0.1.2 (ADR 0015): LJ pair overrides. Test numbers, not a force field.
+OVERRIDE = """
+[[pair_override]]
+types = ["{li}", "EC.opls_801"]
+sigma_nm = 0.21
+epsilon_kjmol = 0.9
+citation = "test value"
+"""
+
+
+def test_pair_override_is_written_validated_and_recorded(tmp_path: Path) -> None:
+    text = ELECTROLYTE.replace("{method}", "insertion")
+    _, plain = build_and_write(text, tmp_path, "plain.ucsys")
+    assert plain["spec_version"] == "0.1.0" and "pair_overrides" not in plain["forcefield"]
+    (li,) = [t for t in plain["forcefield"]["atom_types"] if t.startswith("Li.")]
+    _, doc = build_and_write(text + OVERRIDE.format(li=li), tmp_path, "override.ucsys")
+    assert doc["spec_version"] == "0.1.2"
+    assert doc["forcefield"]["pair_overrides"] == [
+        {"types": [li, "EC.opls_801"], "sigma_nm": 0.21, "epsilon_kjmol": 0.9,
+         "description": "test value"}
+    ]  # fmt: skip
+    assert doc["forcefield"]["atom_types"] == plain["forcefield"]["atom_types"]
+    assert doc["provenance"]["transforms"][-1] == {
+        "kind": "pair_override",
+        "types": [li, "EC.opls_801"],
+        "sigma_nm": 0.21,
+        "epsilon_kjmol": 0.9,
+        "citation": "test value",
+    }
+    assert {"what": f"LJ pair override {li} – EC.opls_801", "citation": "test value"} in doc[
+        "provenance"
+    ]["sources"]
+
+
+def test_pair_override_with_an_unknown_type_fails_before_packing(tmp_path: Path) -> None:
+    text = ELECTROLYTE.replace("{method}", "insertion") + OVERRIDE.format(li="Li.nope")
+    with pytest.raises(BuildError, match=r"unknown atom type 'Li\.nope'"):
+        build(parse_recipe(text, path=tmp_path / "build.toml"))
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ('citation = "test value"', "citation"),  # removed: required
+        ('types = ["A", "B", "C"]', "two atom-type names"),
+        ("epsilon_kjmol = -0.1", "≥ 0"),
+    ],
+)
+def test_pair_override_recipe_errors(change: str, message: str) -> None:
+    from ucmd_builder.recipe import RecipeError
+
+    block = OVERRIDE.format(li="Li.Li")
+    if change.startswith("citation"):
+        block = block.replace(change + "\n", "")
+    else:
+        key = change.split(" = ")[0]
+        line = next(x for x in block.splitlines() if x.startswith(key + " = "))
+        block = block.replace(line, change)
+    with pytest.raises(RecipeError, match=message):
+        parse_recipe(ELECTROLYTE.replace("{method}", "insertion") + block)
+
+
+def test_pair_override_survives_the_recipe_round_trip() -> None:
+    from ucmd_builder.recipe import to_toml
+
+    text = ELECTROLYTE.replace("{method}", "insertion") + OVERRIDE.format(li="Li.Li")
+    text += OVERRIDE.format(li="Li.Li").replace("EC.opls_801", "EMC.opls_802")
+    recipe = parse_recipe(text)
+    assert len(recipe.pair_overrides) == 2
+    assert parse_recipe(to_toml(recipe)) == recipe
+    with pytest.raises(ValueError, match="repeats"):
+        parse_recipe(
+            text
+            + OVERRIDE.format(li="Li.Li").replace(
+                '"Li.Li", "EC.opls_801"', '"EC.opls_801", "Li.Li"'
+            )
+        )

@@ -21,10 +21,14 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from ucmd_spec import SPEC_VERSION
 from ucmd_spec.system import validate_system_package
 
 from .build import BuildError, BuiltMolecule, BuiltSystem
+
+#: The spec version a package declares: the lowest that expresses it, so packages without
+#: the 0.1.2 key stay byte-identical to earlier builds.
+SPEC_BASE = "0.1.0"
+SPEC_PAIR_OVERRIDES = "0.1.2"  # forcefield.pair_overrides (ADR 0015)
 
 UNITS = {
     "length": "nm",
@@ -110,13 +114,31 @@ def forcefield_json(built: BuiltSystem) -> dict[str, Any]:
                 "sigma_nm": float(lj.sigma_nm),
                 "epsilon_kjmol": float(lj.epsilon_kjmol),
             }
-    return {
+    out: dict[str, Any] = {
         "name": f"{' + '.join(families) or 'force field'} ({', '.join(sources)})",
         "combination_rule": c.combination_rule,
         "scale_14_lj": float(c.scale_14_lj),
         "scale_14_coulomb": float(c.scale_14_coulomb),
         "atom_types": atom_types,
     }
+    if built.pair_overrides:
+        for o in built.pair_overrides:
+            unknown = [t for t in o.types if t not in atom_types]
+            if unknown:
+                raise BuildError(
+                    f"pair_override {list(o.types)}: unknown atom type {unknown[0]!r}; the "
+                    f"package has {sorted(atom_types)}"
+                )
+        out["pair_overrides"] = [
+            {
+                "types": list(o.types),
+                "sigma_nm": float(o.sigma_nm),
+                "epsilon_kjmol": float(o.epsilon_kjmol),
+                "description": o.description or o.citation,
+            }
+            for o in built.pair_overrides
+        ]
+    return out
 
 
 def system_document(built: BuiltSystem, created_utc: str) -> dict[str, Any]:
@@ -126,7 +148,7 @@ def system_document(built: BuiltSystem, created_utc: str) -> dict[str, Any]:
     L = float(built.box_nm)
     doc: dict[str, Any] = {
         "format": "ucmd-system",
-        "spec_version": SPEC_VERSION,
+        "spec_version": SPEC_PAIR_OVERRIDES if built.pair_overrides else SPEC_BASE,
         "name": built.name,
     }
     if built.description:
