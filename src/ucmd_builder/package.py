@@ -14,8 +14,6 @@ import json
 import os
 import shutil
 import tempfile
-from collections.abc import Iterator
-from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -179,38 +177,15 @@ def _save(path: Path, array: np.ndarray) -> None:
         np.lib.format.write_array(f, data, version=(1, 0), allow_pickle=False)
 
 
-@contextmanager
-def _spec_dir() -> Iterator[None]:
-    """Make the validator find the spec's JSON Schemas.
-
-    ucmd-spec 0.1.0 reads its schemas from `spec/` of a UnitcellMD checkout (`$UCMD_SPEC_DIR`,
-    else its own source tree), so a plain install from the git tag cannot find them. Until the
-    validator packages its schemas, the builder points it at the workspace's `../spec`, as the
-    engine's contract tests do.
-    """
-    if os.environ.get("UCMD_SPEC_DIR"):
-        yield
-        return
-    workspace_spec = Path(__file__).resolve().parents[3] / "spec"
-    if not (workspace_spec / "schemas" / "system.schema.json").is_file():
-        yield
-        return
-    os.environ["UCMD_SPEC_DIR"] = str(workspace_spec)
-    try:
-        yield
-    finally:
-        os.environ.pop("UCMD_SPEC_DIR", None)
-
-
 def validate(directory: Path) -> None:
     """Run the reference validator; any error is a builder bug and stops the build."""
     try:
-        with _spec_dir():
-            report = validate_system_package(directory)
+        report = validate_system_package(directory)
     except FileNotFoundError as e:
         raise BuildError(
-            f"the spec validator cannot find the spec's JSON Schemas ({e.filename}); set "
-            "UCMD_SPEC_DIR to the spec/ directory of a UnitcellMD checkout at tag spec-v0.1.0"
+            f"the spec validator cannot find the spec's JSON Schemas ({e.filename}); reinstall "
+            "ucmd-spec (its wheel ships them) or, if UCMD_SPEC_DIR is set, point it at the "
+            "spec/ directory of a UnitcellMD checkout"
         ) from None
     if not report.ok:
         issue = report.error

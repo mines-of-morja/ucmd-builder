@@ -111,7 +111,6 @@ def test_generated_run_files_pass_the_spec_validator(spec: Path, tmp_path: Path)
     from ucmd_spec.run_config import validate_run_config
 
     from ucmd_builder.gui.runs import RunSettings, new_run_dir, run_files
-    from ucmd_builder.package import _spec_dir
 
     package = tmp_path / "box.ucsys"
     package.mkdir()
@@ -122,8 +121,7 @@ def test_generated_run_files_pass_the_spec_validator(spec: Path, tmp_path: Path)
         assert set(files) == ({"minimize.toml", "run.toml"} if settings.minimize else {"run.toml"})
         for name, text in files.items():
             (run_dir / name).write_text(text)
-            with _spec_dir():
-                report = validate_run_config(run_dir / name)
+            report = validate_run_config(run_dir / name)
             assert report.ok, [i.message for i in report.issues]
     assert 'system = "../../box.ucsys"' in files["run.toml"]
 

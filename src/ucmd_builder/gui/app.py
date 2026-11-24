@@ -381,7 +381,6 @@ class MainWindow(QMainWindow):
         """Write the run directory next to the package and start the engine."""
         from ucmd_spec.run_config import validate_run_config
 
-        from ..package import _spec_dir
         from ..profile import executable
 
         if self.package_path is None or self.scene is None or self.is_running():
@@ -399,8 +398,7 @@ class MainWindow(QMainWindow):
             self.log.add(warning)
         run_dir = new_run_dir(self.package_path)
         write_run(self.package_path, run_dir, settings, cutoff)
-        with _spec_dir():
-            report = validate_run_config(run_dir / "run.toml")
+        report = validate_run_config(run_dir / "run.toml")
         if not report.ok:  # a builder bug: never start the engine on an invalid file
             for issue in report.issues:
                 self.log.add(f"run.toml: {issue.code} {issue.message}")

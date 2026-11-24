@@ -41,5 +41,5 @@ python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'   # once; includes th
   declared units, and are converted only in `forcefield/units.py`.
 - Every package the builder writes goes through the `ucmd-spec` validator before it is moved
   into place. A validation failure is a builder bug, never something to work around.
-- ucmd-spec 0.1.0 cannot find its schemas when installed as a wheel. Point it at `spec/` with
-  `UCMD_SPEC_DIR`; in the workspace layout the builder uses `../spec` automatically.
+- ucmd-spec ships its JSON Schemas in the wheel since 0.1.1. `UCMD_SPEC_DIR` still overrides them
+  (to check against a `spec/` directory under development).
