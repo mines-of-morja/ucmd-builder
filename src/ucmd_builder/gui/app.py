@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 
 import shiboken6
-from PySide6.QtCore import Qt, QThread
+from PySide6.QtCore import QByteArray, Qt, QThread
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
@@ -23,9 +23,11 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QLabel,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QScrollArea,
     QSizePolicy,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -44,10 +46,16 @@ from .ruler import RulerPanel
 from .run_preview import RunBrowser, RunController, RunDialog, RunPanel, write_run
 from .runs import RunInfo, RunSettings, new_run_dir, preview_cutoff, run_outputs, scan_runs
 from .scene import Scene, read_package
+from .settings import Settings, default_settings_path
 from .table_file import TableError, is_table
 from .viewer import Viewer, make_qt_viewer
 
-TITLE = "UnitcellMD builder"
+TITLE = "UnitcellMD"
+LAYOUT_VERSION = 1  # raise it when panels are added or renamed: an older layout is then ignored
+FILE_FILTER = (
+    "Everything the GUI opens (*.toml *.xyz *.tsv);;Recipes and runs (*.toml);;"
+    "Molecule files (*.xyz);;Result tables (*.tsv)"
+)
 
 
 def use_c_numeric_locale() -> None:
@@ -68,8 +76,14 @@ class MainWindow(QMainWindow):
     warning.
     """
 
-    def __init__(self, viewer: Viewer | None = None, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        viewer: Viewer | None = None,
+        parent: QWidget | None = None,
+        settings: Settings | None = None,
+    ) -> None:
         super().__init__(parent)
+        self.settings = settings if settings is not None else Settings()
         use_c_numeric_locale()  # also when someone else created the QApplication
         self.document = RecipeDocument(self)
         self.viewer = viewer if viewer is not None else make_qt_viewer(self)
@@ -135,9 +149,28 @@ class MainWindow(QMainWindow):
         self._update_title()
         self._update_actions()
         self.statusBar().showMessage("Add components, then Build. Right-click an atom for details.")
-        self._default_layout = self.saveState()
+        self._default_layout = self.saveState(LAYOUT_VERSION)
         self.resize(1400, 900)
         self._size_docks()
+        self.setAcceptDrops(True)
+        self._restore_layout()
+        if self.settings.problem:
+            self.log.warn(self.settings.problem)
+
+    def _restore_layout(self) -> None:
+        """The window as it was closed; anything unreadable is ignored."""
+        for text, restore in (
+            (self.settings.geometry, self.restoreGeometry),
+            (self.settings.state, lambda data: self.restoreState(data, LAYOUT_VERSION)),
+        ):
+            if text:
+                restore(QByteArray.fromBase64(text.encode("ascii", "replace")))
+
+    def _keep_layout(self) -> None:
+        self.notebook.show_fixed()  # the side panels as they stand beside the 3D view
+        self.settings.geometry = bytes(self.saveGeometry().toBase64()).decode("ascii")
+        self.settings.state = bytes(self.saveState(LAYOUT_VERSION).toBase64()).decode("ascii")
+        self.settings.save()
 
     def _size_docks(self) -> None:
         self.resizeDocks(
@@ -148,7 +181,7 @@ class MainWindow(QMainWindow):
     def reset_layout(self) -> None:
         """Every panel back to its place and size."""
         self._side = None
-        self.restoreState(self._default_layout)
+        self.restoreState(self._default_layout, LAYOUT_VERSION)
         self._size_docks()
         self._page_changed()
 
@@ -209,20 +242,22 @@ class MainWindow(QMainWindow):
 
     def _actions(self) -> None:
         self.act_new = self._action("New", self.new_recipe, QKeySequence.StandardKey.New)
-        self.act_open = self._action(
-            "Open recipe…", self._open_dialog, QKeySequence.StandardKey.Open
+        self.act_open = self._action("Open file…", self._open_dialog, QKeySequence.StandardKey.Open)
+        self.act_open_folder = self._action(
+            "Open folder… (run, study, package, tables)", self._open_folder_dialog, "Ctrl+Shift+O"
         )
+        self.open_menu = QMenu("Open", self)
+        self.open_menu.addActions([self.act_open, self.act_open_folder])
+        self.open_menu.addSeparator()
+        self.open_menu.aboutToShow.connect(self._list_recent)
+        self._recent_actions: list[QAction] = []
         self.act_save = self._action("Save", self._save, QKeySequence.StandardKey.Save)
         self.act_save_as = self._action("Save as…", self._save_as, QKeySequence.StandardKey.SaveAs)
-        self.act_open_package = self._action("Open package…", self._open_package_dialog)
         self.act_build = self._action("Build", self.start_build, "Ctrl+B")
         self.act_cancel = self._action("Cancel", self.cancel_build)
         self.act_export = self._action("Export package…", self._export_dialog, "Ctrl+E")
         self.act_run = self._action("Run…", self._run_dialog, "Ctrl+R")
         self.act_stop = self._action("Stop run", self.stop_run)
-        self.act_open_run = self._action("Open run…", self._open_run_dialog)
-        self.act_open_molecule = self._action("Open molecule…", self._open_molecule_dialog)
-        self.act_open_tables = self._action("Open tables…", self._open_tables_dialog)
         self.act_images = self._action("Periodic images", self.viewer.show_images, "Ctrl+I")
         self.act_images.setCheckable(True)
         self.act_undo = self.document.undo_stack.createUndoAction(self, "Undo")
@@ -230,14 +265,14 @@ class MainWindow(QMainWindow):
         self.act_redo = self.document.undo_stack.createRedoAction(self, "Redo")
         self.act_redo.setShortcut(QKeySequence.StandardKey.Redo)
         menu = self.menuBar().addMenu("&File")
-        for a in (self.act_new, self.act_open, self.act_save, self.act_save_as):
+        menu.addAction(self.act_new)
+        menu.addMenu(self.open_menu)
+        for a in (self.act_save, self.act_save_as):
             menu.addAction(a)
         menu.addSeparator()
-        menu.addAction(self.act_open_package)
-        menu.addAction(self.act_open_run)
-        menu.addAction(self.act_open_molecule)
-        menu.addAction(self.act_open_tables)
         menu.addAction(self.act_export)
+        menu.addSeparator()
+        menu.addAction(self._action("Quit", self.close, QKeySequence.StandardKey.Quit))
         menu = self.menuBar().addMenu("&Edit")
         menu.addAction(self.act_undo)
         menu.addAction(self.act_redo)
@@ -254,11 +289,15 @@ class MainWindow(QMainWindow):
         menu = self.menuBar().addMenu("&Run")
         menu.addAction(self.act_run)
         menu.addAction(self.act_stop)
-        menu.addAction(self.act_open_run)
         toolbar = self.addToolBar("Main")
         toolbar.setObjectName("Main")
-        for a in (self.act_new, self.act_open, self.act_save):
-            toolbar.addAction(a)
+        toolbar.addAction(self.act_new)
+        self.open_button = QToolButton()
+        self.open_button.setText("Open")
+        self.open_button.setMenu(self.open_menu)
+        self.open_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        toolbar.addWidget(self.open_button)
+        toolbar.addAction(self.act_save)
         toolbar.addSeparator()
         toolbar.addAction(self.act_undo)
         toolbar.addAction(self.act_redo)
@@ -269,12 +308,13 @@ class MainWindow(QMainWindow):
         toolbar.addAction(self.act_export)
         toolbar.addAction(self.act_run)
         toolbar.addAction(self.act_stop)
-        toolbar.addAction(self.act_open_run)
         toolbar.addSeparator()
         toolbar.addAction(self.act_images)
         self.shown_label = QLabel()
         self.shown_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.shown_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.shown_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.shown_label.setMinimumWidth(1)  # cut, rather than force the width of the window
+        self.shown_label.setContentsMargins(8, 0, 8, 0)
         toolbar.addWidget(self.shown_label)
         self.toolbar = toolbar
 
@@ -302,8 +342,8 @@ class MainWindow(QMainWindow):
         runnable = self.package_path is not None or self.built is not None
         self.act_run.setEnabled(not building and not self.is_running() and runnable)
         self.act_stop.setEnabled(self.is_running())
-        self.act_open_run.setEnabled(not building and not self.is_running())
-        self.act_open_molecule.setEnabled(not building and not self.is_running())
+        self.open_menu.setEnabled(not building and not self.is_running())
+        self.open_button.setEnabled(not building and not self.is_running())
 
     # -- recipe --------------------------------------------------------------------------------
 
@@ -345,12 +385,64 @@ class MainWindow(QMainWindow):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.components.apply(dialog.result_recipe, "composition")
 
+    # -- opening ---------------------------------------------------------------------------------
+
     def _open_dialog(self) -> None:
-        if not self._discard_ok():
-            return
-        path, _ = QFileDialog.getOpenFileName(self, "Open recipe", "", "Recipes (*.toml)")
+        paths, _ = QFileDialog.getOpenFileNames(self, "Open", self._start_folder(), FILE_FILTER)
+        self.open_by_user([Path(p) for p in paths])
+
+    def _open_folder_dialog(self) -> None:
+        path = QFileDialog.getExistingDirectory(
+            self, "Open a run, a folder of runs, a study, a package or tables", self._start_folder()
+        )
         if path:
-            self.open_recipe(path)
+            self.open_by_user([Path(path)])
+
+    def _start_folder(self) -> str:
+        if self.run_dir is not None:
+            return str(self.run_dir)
+        if self.package_path is not None:
+            return str(self.package_path.parent)
+        return self.settings.workspace or ""
+
+    def open_by_user(self, paths: list[Path]) -> None:
+        """Open what the user chose or dropped, asking before unsaved edits are lost."""
+        if not paths:
+            return
+        if self.is_running() or self.is_building():
+            self.log.warn("wait for the build or stop the run before opening something else")
+            return
+        if any(self._is_recipe(p) for p in paths) and not self._discard_ok():
+            return
+        self.open_paths(paths)
+
+    @staticmethod
+    def _is_recipe(path: Path) -> bool:
+        return path.suffix == ".toml" and path.name != "run.toml"
+
+    def _list_recent(self) -> None:
+        for action in self._recent_actions:
+            self.open_menu.removeAction(action)
+            action.deleteLater()
+        self._recent_actions = []
+        for text in self.settings.recent:
+            path = Path(text)
+            label = f"{path.name}  —  {path.parent}".replace("&", "&&")
+            action = QAction(label, self)
+            action.setEnabled(path.exists())
+            action.setToolTip(text)
+            action.triggered.connect(lambda _c=False, p=path: self.open_by_user([p]))
+            self.open_menu.addAction(action)
+            self._recent_actions.append(action)
+
+    def dragEnterEvent(self, event) -> None:
+        if event.mimeData().hasUrls() and any(u.isLocalFile() for u in event.mimeData().urls()):
+            event.acceptProposedAction()
+
+    def dropEvent(self, event) -> None:
+        paths = [Path(u.toLocalFile()) for u in event.mimeData().urls() if u.isLocalFile()]
+        event.acceptProposedAction()
+        self.open_by_user(paths)
 
     def _save(self) -> None:
         if self.document.path is None:
@@ -479,11 +571,6 @@ class MainWindow(QMainWindow):
         self.package_path = out
         self.log.add(f"exported {out} and {recipe_file.name}")
         return out
-
-    def _open_package_dialog(self) -> None:
-        path = QFileDialog.getExistingDirectory(self, "Open package (*.ucsys)")
-        if path:
-            self.open_package(path)
 
     def _export_dialog(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
@@ -622,17 +709,6 @@ class MainWindow(QMainWindow):
         )
         return True
 
-    def _open_run_dialog(self) -> None:
-        start = ""
-        if self.package_path is not None:
-            runs = self.package_path.parent / f"{self.package_path.name}.runs"
-            start = str(runs if runs.is_dir() else self.package_path.parent)
-        path = QFileDialog.getExistingDirectory(
-            self, "Open run: a run folder, or any folder with runs below it", start
-        )
-        if path:
-            self.open_run(path)
-
     def open_molecules(self, paths: list[Path | str]) -> bool:
         """Show molecule files (XYZ): structures to look at, never to run or export."""
         if self.is_running() or self.is_building():
@@ -661,11 +737,6 @@ class MainWindow(QMainWindow):
         self._update_actions()
         return True
 
-    def _open_molecule_dialog(self) -> None:
-        paths, _ = QFileDialog.getOpenFileNames(self, "Open molecule", "", "XYZ files (*.xyz)")
-        if paths:
-            self.open_molecules(paths)
-
     def open_tables(self, paths: list[Path | str]) -> bool:
         """Show result tables, each on a page of the notebook."""
         ok = bool(paths)
@@ -679,25 +750,26 @@ class MainWindow(QMainWindow):
             self.log.add(f"opened table {path}: {len(page.table.rows)} rows")
         return ok
 
-    def _open_tables_dialog(self) -> None:
-        start = str(self.run_dir) if self.run_dir is not None else ""
-        paths, _ = QFileDialog.getOpenFileNames(self, "Open tables", start, "Tables (*.tsv)")
-        if paths:
-            self.open_tables(paths)
-
     def open_paths(self, paths: list[Path]) -> None:
         """Open everything named on the command line; molecule files together, as one list."""
         molecules = [p for p in paths if p.suffix == ".xyz"]
-        if molecules:
-            self.open_molecules(molecules)
+        if molecules and self.open_molecules(molecules):
+            for path in molecules:
+                self.settings.remember(path)
         for path in paths:
-            if path not in molecules:
-                self.open_path(path)
+            if path not in molecules and self.open_path(path):
+                self.settings.remember(path)
 
     def open_path(self, path: Path | str) -> bool:
         """Open what `path` is: a run (run.toml or its folder), a package, a molecule file
         (.xyz), a result table (.tsv) or a folder of them, or a recipe."""
         path = Path(path)
+        if not path.exists():
+            self.log.warn(f"cannot open {path}: it does not exist")
+            return False
+        if path.is_file() and path.suffix not in (".toml", ".xyz", ".tsv"):
+            self.log.warn(f"cannot open {path}: not a recipe, run, molecule file or table")
+            return False
         if path.suffix == ".tsv" and path.is_file():
             return self.open_tables([path])
         if path.is_dir() and not (path / "run.toml").is_file():
@@ -740,13 +812,14 @@ class MainWindow(QMainWindow):
             process = self.run.process
             self.run.cancel()
             process.waitForFinished(15_000)
+        self._keep_layout()
         event.accept()
 
 
 def run_app(argv: list[str]) -> int:
     app = QApplication.instance() or QApplication(sys.argv[:1])
     use_c_numeric_locale()
-    window = MainWindow()
+    window = MainWindow(settings=Settings.load(default_settings_path()))
     window.open_paths([Path(a) for a in argv])
     window.fit_to_screen()
     window.show()
