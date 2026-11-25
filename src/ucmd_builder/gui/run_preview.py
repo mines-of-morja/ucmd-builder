@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..profile import executable, load_profile
+from .molecule_file import Structure
 from .plots import LivePlots
 from .runs import (
     THERMOSTATS,
@@ -348,9 +349,11 @@ class RunPanel(QWidget):
 
     frame = Signal(object, object)  # positions and cell of the frame in nm (cell: or None)
     cancel_requested = Signal()
+    structure = Signal(object)  # the Structure of a molecule file to show
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.structures: list[Structure] = []
         self.status = QLabel("No run yet. Build, then Run; or open an earlier run.")
         self.cancel_button = QPushButton("Stop run")
         self.cancel_button.setEnabled(False)
@@ -359,6 +362,9 @@ class RunPanel(QWidget):
         self.play_button = QPushButton("Play")
         self.slider = QSlider(Qt.Orientation.Horizontal)
         self.frame_label = QLabel("–")
+        self.structure_box = QComboBox()  # only for molecule files with several structures
+        self.structure_box.hide()
+        self.structure_box.currentIndexChanged.connect(self._structure_chosen)
         for w in (self.play_button, self.slider):
             w.setEnabled(False)
         self.status.setWordWrap(True)
@@ -370,6 +376,7 @@ class RunPanel(QWidget):
         playback.addWidget(self.slider, 1)
         layout = QVBoxLayout(self)
         layout.addLayout(top)
+        layout.addWidget(self.structure_box)
         layout.addWidget(self.plots, 1)
         layout.addLayout(playback)
         layout.addWidget(self.frame_label)
@@ -387,13 +394,18 @@ class RunPanel(QWidget):
         self.play_button.clicked.connect(self.toggle_play)
         self.slider.valueChanged.connect(self.show_frame)
 
-    def _reset(self, outputs: RunOutputs) -> None:
+    def _reset(self, outputs: RunOutputs | None) -> None:
         self._poll.stop()
         self._prefix = ""
         self.outputs = outputs
-        self.tail = ThermoTail(outputs.thermo) if outputs.thermo is not None else None
-        live = outputs.trajectory is not None and is_live_format(outputs.trajectory)
-        self.frames = XyzTail(outputs.trajectory) if live else None
+        self.structures = []
+        self.structure_box.hide()
+        self.plots.show()
+        thermo = outputs.thermo if outputs is not None else None
+        path = outputs.trajectory if outputs is not None else None
+        self.tail = ThermoTail(thermo) if thermo is not None else None
+        live = path is not None and is_live_format(path)
+        self.frames = XyzTail(path) if live else None
         self.following = False
         self.trajectory = None
         self._player.stop()
@@ -401,7 +413,48 @@ class RunPanel(QWidget):
         self.play_button.setEnabled(False)
         self.slider.setEnabled(False)
         self.frame_label.setText("–")
-        self.plots.reset(outputs.target_K)
+        self.plots.reset(outputs.target_K if outputs is not None else None)
+
+    def show_structures(self, structures: list[Structure]) -> None:
+        """Molecule files: no plots; a list of structures, each with its frames."""
+        self._reset(None)
+        self.cancel_button.setEnabled(False)
+        self.plots.hide()
+        self.structures = structures
+        self.structure_box.blockSignals(True)
+        self.structure_box.clear()
+        for s in structures:
+            self.structure_box.addItem(f"{s.name} ({s.scene.n_atoms} atoms, {len(s.trajectory)})")
+        self.structure_box.blockSignals(False)
+        self.structure_box.setVisible(len(structures) > 1)
+        self._structure_chosen(0)
+
+    def close_structures(self) -> None:
+        """Forget the molecule files: another scene is shown."""
+        if self.structures:
+            self._reset(None)
+            self.status.setText("–")
+
+    def _structure_chosen(self, k: int) -> None:
+        if not 0 <= k < len(self.structures):
+            return
+        chosen = self.structures[k]
+        self._player.stop()
+        self.play_button.setText("Play")
+        self.trajectory = None
+        self.structure.emit(chosen)
+        frames = len(chosen.trajectory)
+        self.status.setText(
+            f"{chosen.name}: {chosen.scene.n_atoms} atoms, {frames} frame{'s' * (frames != 1)}; "
+            "bonds guessed from distances (display only)"
+        )
+        self.trajectory = chosen.trajectory
+        several = frames > 1
+        self.slider.setRange(0, frames - 1)
+        self.slider.setEnabled(several)
+        self.play_button.setEnabled(several)
+        self.slider.setValue(frames - 1)  # the last one: for an optimization the result
+        self.show_frame(frames - 1)
 
     def begin(self, outputs: RunOutputs) -> None:
         """A run that is starting: follow its thermo table (and XYZ frames) until `end`."""
@@ -506,9 +559,9 @@ class RunPanel(QWidget):
     def show_frame(self, k: int) -> None:
         if self.trajectory is None or not 0 <= k < len(self.trajectory):
             return
-        self.frame_label.setText(
-            f"frame {k + 1}/{len(self.trajectory)}, {self.trajectory.times_ps[k]:.3f} ps"
-        )
+        labels = self.trajectory.labels
+        what = labels[k] if labels is not None else f"{self.trajectory.times_ps[k]:.3f} ps"
+        self.frame_label.setText(f"frame {k + 1}/{len(self.trajectory)}, {what}")
         self.frame.emit(self.trajectory.positions_nm[k], self.trajectory.cell(k))
 
     def toggle_play(self) -> None:

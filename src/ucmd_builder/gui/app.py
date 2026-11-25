@@ -33,6 +33,7 @@ from .build_worker import BuildWorker, start_build
 from .components import ComponentsPanel
 from .composition import CompositionDialog
 from .document import RecipeDocument
+from .molecule_file import MoleculeFileError, read_structures
 from .panels import LogPanel, PropertiesPanel
 from .run_preview import RunBrowser, RunController, RunDialog, RunPanel, write_run
 from .runs import RunInfo, RunSettings, new_run_dir, preview_cutoff, run_outputs, scan_runs
@@ -82,6 +83,7 @@ class MainWindow(QMainWindow):
         self.resizeDocks([run_dock], [440], Qt.Orientation.Horizontal)
         self.run_panel.frame.connect(self.viewer.show_positions)
         self.run_panel.cancel_requested.connect(self.stop_run)
+        self.run_panel.structure.connect(lambda s: self.show_scene(s.scene))
         self._actions()
         self.document.changed.connect(self._recipe_changed)
         self.document.path_changed.connect(lambda _p: self._update_title())
@@ -129,6 +131,7 @@ class MainWindow(QMainWindow):
         self.act_export = self._action("Export package…", self._export_dialog, "Ctrl+E")
         self.act_run = self._action("Run…", self._run_dialog, "Ctrl+R")
         self.act_open_run = self._action("Open run…", self._open_run_dialog)
+        self.act_open_molecule = self._action("Open molecule…", self._open_molecule_dialog)
         self.act_images = self._action("Periodic images", self.viewer.show_images, "Ctrl+I")
         self.act_images.setCheckable(True)
         self.act_undo = self.document.undo_stack.createUndoAction(self, "Undo")
@@ -141,6 +144,7 @@ class MainWindow(QMainWindow):
         menu.addSeparator()
         menu.addAction(self.act_open_package)
         menu.addAction(self.act_open_run)
+        menu.addAction(self.act_open_molecule)
         menu.addAction(self.act_export)
         menu = self.menuBar().addMenu("&Edit")
         menu.addAction(self.act_undo)
@@ -192,6 +196,7 @@ class MainWindow(QMainWindow):
         runnable = self.package_path is not None or self.built is not None
         self.act_run.setEnabled(not building and not self.is_running() and runnable)
         self.act_open_run.setEnabled(not building and not self.is_running())
+        self.act_open_molecule.setEnabled(not building and not self.is_running())
 
     # -- recipe --------------------------------------------------------------------------------
 
@@ -287,6 +292,7 @@ class MainWindow(QMainWindow):
 
     def _built(self, built: BuiltSystem) -> None:
         self.built = built
+        self.run_panel.close_structures()
         self.package_path = None
         names = ", ".join(
             f"{n} {m.name}" for m, n in zip(built.molecules, built.counts, strict=True)
@@ -320,6 +326,7 @@ class MainWindow(QMainWindow):
             self.log.add(f"cannot open package {path}: {e}")
             return False
         self.built = None
+        self.run_panel.close_structures()
         self.package_path = Path(path)
         self.show_scene(scene)
         self.log.add(f"opened package {path}: {scene.n_atoms} atoms (read-only)")
@@ -493,9 +500,44 @@ class MainWindow(QMainWindow):
         if path:
             self.open_run(path)
 
+    def open_molecules(self, paths: list[Path | str]) -> bool:
+        """Show molecule files (XYZ): structures to look at, never to run or export."""
+        if self.is_running() or self.is_building():
+            self.log.add("wait for the build or stop the run before opening a molecule file")
+            return False
+        structures = []
+        for path in paths:
+            try:
+                structures += read_structures(path)
+            except (OSError, MoleculeFileError) as e:
+                self.log.add(f"cannot open {path}: {e}")
+                return False
+        if not structures:
+            return False
+        self.built = None
+        self.package_path = None
+        self.run_dir = None
+        self.run_panel.show_structures(structures)
+        files = "file" if len(structures) == 1 else "files"
+        frames = sum(len(s.trajectory) for s in structures)
+        self.log.add(
+            f"opened {len(structures)} molecule {files}, {frames} frames; bonds are guessed from "
+            "distances (display only)"
+        )
+        self._update_actions()
+        return True
+
+    def _open_molecule_dialog(self) -> None:
+        paths, _ = QFileDialog.getOpenFileNames(self, "Open molecule", "", "XYZ files (*.xyz)")
+        if paths:
+            self.open_molecules(paths)
+
     def open_path(self, path: Path | str) -> bool:
-        """Open what `path` is: a run (run.toml or its folder), a package, or a recipe."""
+        """Open what `path` is: a run (run.toml or its folder), a package, a molecule file
+        (.xyz) or a recipe."""
         path = Path(path)
+        if path.suffix == ".xyz" and path.is_file():
+            return self.open_molecules([path])
         if (path / "system.json").is_file():
             return self.open_package(path)
         if path.name == "run.toml" or path.is_dir():

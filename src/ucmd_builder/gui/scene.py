@@ -98,7 +98,9 @@ class Scene:
     def atom(self, i: int) -> AtomInfo:
         """Element, type, charge and Lennard-Jones parameters of atom `i`."""
         mol = int(self.molecule[i])
-        mtype = self._types[mol]
+        mtype = self._types[mol] if self._types else ""
+        if not self.doc:  # a molecule file: no names, types or parameters
+            return AtomInfo(i, self.elements[i], "", None, None, None, None, mtype, mol)
         template = self.doc["molecule_types"][mtype]["atoms"][int(self._local[i])]
         lj = (self.doc.get("forcefield") or {}).get("atom_types", {}).get(template.get("type"))
         return AtomInfo(
