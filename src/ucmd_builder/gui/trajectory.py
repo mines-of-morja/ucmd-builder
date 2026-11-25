@@ -3,14 +3,15 @@
 Two formats, chosen by the file name the run writes (`[output.trajectory] file`):
 
 - **H5MD** (`.h5`, spec/trajectory-h5md.md): `/particles/all/position` with step, time (ps)
-  and value (nm). Read once the run has ended: an HDF5 file is not read while the engine still
-  writes it.
+  and value (nm), and the cell of every frame (`box/edges`; NPT changes it). Read once the run
+  has ended: an HDF5 file is not read while the engine still writes it.
 - **Extended XYZ** (`.xyz`): the engine's viewer trajectory, in Å, one frame flushed at a time.
   `XyzTail` reads complete frames while the run goes, so a run can be watched live.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,9 +25,14 @@ class Trajectory:
     steps: np.ndarray
     times_ps: np.ndarray
     positions_nm: np.ndarray  # (frames, atoms, 3)
+    cells_nm: np.ndarray | None = None  # (frames, 3, 3), rows a, b, c; None: the package's cell
+    labels: tuple[str, ...] | None = None  # instead of the time, for frames without one
 
     def __len__(self) -> int:
         return len(self.steps)
+
+    def cell(self, k: int) -> np.ndarray | None:
+        return None if self.cells_nm is None else self.cells_nm[k]
 
 
 def read_h5md(path: Path | str) -> Trajectory:
@@ -34,11 +40,40 @@ def read_h5md(path: Path | str) -> Trajectory:
 
     with h5py.File(path, "r") as fh:
         group = fh["particles/all/position"]
+        steps = np.asarray(group["step"][()], dtype=np.int64)
         return Trajectory(
-            steps=np.asarray(group["step"][()], dtype=np.int64),
+            cells_nm=_cells(fh, steps),
+            steps=steps,
             times_ps=np.asarray(group["time"][()], dtype=float),
             positions_nm=np.asarray(group["value"][()], dtype=float),
         )
+
+
+def _cells(fh, steps: np.ndarray) -> np.ndarray | None:
+    """The cell of every frame; None if the file has none or is not periodic (all zeros)."""
+    box = fh.get("particles/all/box/edges")
+    if box is None:
+        return None
+    cells = np.asarray(box["value"][()], dtype=float)
+    if not cells.any():
+        return None
+    if not np.array_equal(np.asarray(box["step"][()]), steps):
+        raise ValueError("the steps of box/edges and position differ")
+    return cells
+
+
+LATTICE = re.compile(r'Lattice="([^"]*)"')
+
+
+def lattice_nm(comment: str) -> np.ndarray | None:
+    """The cell of an extended-XYZ comment line (rows a, b, c), in nm; None without `Lattice`."""
+    m = LATTICE.search(comment)
+    if m is None:
+        return None
+    cell = np.array([float(v) for v in m[1].split()])
+    if cell.shape != (9,) or not np.isfinite(cell).all():
+        raise ValueError(f"Lattice needs nine numbers, not {m[1]!r}")
+    return cell.reshape(3, 3) * ANGSTROM_IN_NM
 
 
 def is_live_format(path: Path | str) -> bool:
@@ -61,6 +96,7 @@ class XyzTail:
         self.steps: list[int] = []
         self.times_ps: list[float] = []
         self.frames: list[np.ndarray] = []
+        self.cells: list[np.ndarray | None] = []
 
     def poll(self) -> int:
         """Read what was appended; return the number of new frames."""
@@ -90,6 +126,7 @@ class XyzTail:
             fields = dict(
                 w.split("=", 1) for w in comment.split() if w.startswith(("step=", "time_ps="))
             )
+            self.cells.append(lattice_nm(comment))
             self.steps.append(int(fields.get("step", len(self.steps))))
             self.times_ps.append(float(fields.get("time_ps", "nan")))
             xyz = np.array([line.split()[1:4] for line in atoms], dtype=float)
@@ -100,10 +137,12 @@ class XyzTail:
     def trajectory(self) -> Trajectory:
         if not self.frames:
             return Trajectory(np.empty(0, np.int64), np.empty(0), np.empty((0, 0, 3)))
+        cells = [c for c in self.cells if c is not None]
         return Trajectory(
             steps=np.array(self.steps, dtype=np.int64),
             times_ps=np.array(self.times_ps),
             positions_nm=np.stack(self.frames),
+            cells_nm=np.stack(cells) if len(cells) == len(self.frames) else None,
         )
 
 

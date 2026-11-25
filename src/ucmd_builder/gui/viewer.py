@@ -33,7 +33,9 @@ class Viewer(Protocol):
 
     def show_scene(self, scene: Scene) -> None: ...
 
-    def show_positions(self, positions_nm: np.ndarray) -> None: ...
+    def show_positions(
+        self, positions_nm: np.ndarray, cell_nm: np.ndarray | None = None
+    ) -> None: ...
 
     def show_images(self, on: bool) -> None: ...
 
@@ -44,10 +46,14 @@ class Viewer(Protocol):
     def screenshot(self, path: Path | str) -> None: ...
 
 
+def cell_corners(cell_nm: np.ndarray) -> np.ndarray:
+    a, b, c = cell_nm
+    return np.array([i * a + j * b + k * c for i in (0, 1) for j in (0, 1) for k in (0, 1)])
+
+
 def cell_wireframe(cell_nm: np.ndarray) -> pv.PolyData:
     """The 12 edges of the cell spanned by the rows of `cell_nm`."""
-    a, b, c = cell_nm
-    corners = np.array([i * a + j * b + k * c for i in (0, 1) for j in (0, 1) for k in (0, 1)])
+    corners = cell_corners(cell_nm)
     edges = [
         (p, q)
         for p in range(8)
@@ -88,6 +94,8 @@ class SceneActors:
         self._cloud: pv.PolyData | None = None
         self._bonds: pv.PolyData | None = None
         self._highlight: vtk.vtkActor | None = None
+        self._cell: pv.PolyData | None = None
+        self.cell_nm: np.ndarray | None = None
         self._images: pv.PolyData | None = None
         self._images_actor: vtk.vtkActor | None = None
         self.images_on = False
@@ -98,6 +106,8 @@ class SceneActors:
         self._highlight = None
         self._images, self._images_actor = None, None
         self.scene = scene
+        self.cell_nm = scene.cell_nm
+        self._cell = None
         self.points = scene.display_positions()
         cloud = pv.PolyData(self.points)
         cloud["radius"] = np.array([radius_nm(e) for e in scene.elements])
@@ -113,8 +123,9 @@ class SceneActors:
         else:
             self._bonds = None
         if scene.cell_nm is not None:
+            self._cell = cell_wireframe(scene.cell_nm)
             self.plotter.add_mesh(
-                cell_wireframe(scene.cell_nm),
+                self._cell,
                 color=CELL_COLOR,
                 line_width=1,
                 name="cell",
@@ -127,9 +138,9 @@ class SceneActors:
 
     def _image_points(self) -> np.ndarray:
         """The atoms in the 26 neighbouring cells (3×3×3 without the centre)."""
-        assert self.scene is not None and self.scene.cell_nm is not None
+        assert self.cell_nm is not None
         shifts = [
-            np.array([i, j, k]) @ self.scene.cell_nm
+            np.array([i, j, k]) @ self.cell_nm
             for i in (-1, 0, 1)
             for j in (-1, 0, 1)
             for k in (-1, 0, 1)
@@ -158,11 +169,14 @@ class SceneActors:
             self._draw_images()
         self.plotter.render()
 
-    def move(self, positions_nm: np.ndarray) -> None:
-        """Show other positions of the same atoms (a trajectory frame)."""
+    def move(self, positions_nm: np.ndarray, cell_nm: np.ndarray | None = None) -> None:
+        """Show other positions of the same atoms (a trajectory frame), in their own cell."""
         if self.scene is None or self._cloud is None:
             return
-        self.points = self.scene.display_positions(positions_nm)
+        self.cell_nm = self.scene.cell_nm if cell_nm is None else np.asarray(cell_nm, dtype=float)
+        self.points = self.scene.display_positions(positions_nm, self.cell_nm)
+        if self._cell is not None and self.cell_nm is not None:
+            self._cell.points = cell_corners(self.cell_nm)
         self._cloud.points = self.points
         if self._bonds is not None:
             self._bonds.points = self.points
@@ -219,8 +233,10 @@ def make_qt_viewer(parent=None):
         def show_scene(self, scene: Scene) -> None:
             self.actors_.show(scene)
 
-        def show_positions(self, positions_nm: np.ndarray) -> None:
-            self.actors_.move(positions_nm)
+        def show_positions(
+            self, positions_nm: np.ndarray, cell_nm: np.ndarray | None = None
+        ) -> None:
+            self.actors_.move(positions_nm, cell_nm)
 
         def show_images(self, on: bool) -> None:
             self.actors_.show_images(on)

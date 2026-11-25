@@ -13,12 +13,14 @@ class FakeViewer:
 
     def __init__(self) -> None:
         self.scenes, self.highlights, self.frames, self.pick = [], [], [], None
+        self.cells = []
 
     def show_scene(self, scene) -> None:
         self.scenes.append(scene)
 
-    def show_positions(self, positions_nm) -> None:
+    def show_positions(self, positions_nm, cell_nm=None) -> None:
         self.frames.append(positions_nm)
+        self.cells.append(cell_nm)
 
     def show_images(self, on: bool) -> None:
         self.images = on

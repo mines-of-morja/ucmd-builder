@@ -140,13 +140,19 @@ class LivePlots(QWidget):
         h = tail.column("conserved_energy_kjmol")
         if len(h) == len(t):
             self.conservation.set_data("conserved_change", t, h - h[0])
-        for chart, key in ((self.pressure, "pressure_bar"), (self.volume, "volume_nm3")):
-            values = tail.column(key)
-            if len(values) == len(t):
-                chart.set_data(key, t, values)
+        values = tail.column("volume_nm3")
+        if len(values) == len(t):
+            self.volume.set_data("volume_nm3", t, values)
         parts = pressure_parts(tail)
-        for key, values in parts.items():
-            self.pressure.set_data(key, t, values)
+        if parts:
+            times = parts.pop("time_ps")
+            for key, values in parts.items():
+                self.pressure.set_data(key, times, values)
+        else:
+            values = tail.column("pressure_bar")
+            if len(values) == len(t):
+                has = ~np.isnan(values)
+                self.pressure.set_data("pressure_bar", t[has], values[has])
         for chart in self.charts:
             chart.rescale()
         self.summary.setText(summary_text(summary(tail)))
@@ -167,14 +173,19 @@ def moving_average(t: np.ndarray, x: np.ndarray, window_ps: float) -> np.ndarray
 
 
 def pressure_parts(tail: ThermoTail) -> dict[str, np.ndarray]:
-    """Kinetic part 2K/(3V), the part of the forces (total − kinetic) and the moving average of
-    the total, in bar; empty if the table lacks a column."""
+    """The rows that have a pressure: time, total, kinetic part 2K/(3V), the part of the forces
+    (total − kinetic) and the moving average of the total, in bar; empty if the table lacks a
+    column."""
     t, p = tail.column("time_ps"), tail.column("pressure_bar")
     k, v = tail.column("kinetic_kjmol"), tail.column("volume_nm3")
     if not len(t) or not (len(p) == len(k) == len(v) == len(t)):
         return {}
+    has = ~np.isnan(p)  # rows with a pressure (thermo.SPARSE_COLUMNS)
+    t, p, k, v = t[has], p[has], k[has], v[has]
     kinetic = 2.0 * k / (3.0 * v) * BAR_PER_KJMOL_NM3
     return {
+        "time_ps": t,
+        "pressure_bar": p,
         "pressure_kinetic": kinetic,
         "pressure_forces": p - kinetic,
         "pressure_average": moving_average(t, p, MOVING_AVERAGE_PS),
@@ -193,7 +204,10 @@ def summary_text(s: dict) -> str:
         ("volume_nm3", "⟨V⟩", "nm³", 2),
     ):
         if key in s:
-            parts.append(f"{label} {s[key]['mean']:.{digits}f} ± {s[key]['sd']:.{digits}f} {unit}")
+            text = f"{label} {s[key]['mean']:.{digits}f} ± {s[key]['sd']:.{digits}f} {unit}"
+            if s[key]["rows"] < s["rows"]:
+                text += f" ({s[key]['rows']} of {s['rows']} rows have a value)"
+            parts.append(text)
     if "drift_kjmol_per_ps" in s:
         parts.append(f"drift of H {s['drift_kjmol_per_ps']:.2f} kJ/mol/ps")
     return "; ".join(parts[:1]) + " " + "; ".join(parts[1:])

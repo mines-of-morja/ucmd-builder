@@ -113,17 +113,23 @@ class Scene:
             molecule=mol,
         )
 
-    def display_positions(self, positions_nm: np.ndarray | None = None) -> np.ndarray:
-        """Positions with every molecule shifted by a lattice vector into the cell (display)."""
+    def display_positions(
+        self, positions_nm: np.ndarray | None = None, cell_nm: np.ndarray | None = None
+    ) -> np.ndarray:
+        """Positions with every molecule shifted by a lattice vector into the cell (display).
+
+        `cell_nm`: the cell of these positions (a trajectory frame); default: the scene's.
+        """
         x = self.positions_nm if positions_nm is None else np.asarray(positions_nm, dtype=float)
-        if self.cell_nm is None or len(x) == 0:
+        cell = self.cell_nm if cell_nm is None else np.asarray(cell_nm, dtype=float)
+        if cell is None or len(x) == 0:
             return x.copy()
         counts = np.bincount(self.molecule)
         centres = np.stack(
             [np.bincount(self.molecule, weights=x[:, k]) / counts for k in range(3)], axis=1
         )
-        fractional = centres @ np.linalg.inv(self.cell_nm)
-        shift = np.floor(fractional) @ self.cell_nm
+        fractional = centres @ np.linalg.inv(cell)
+        shift = np.floor(fractional) @ cell
         return x - shift[self.molecule]
 
 

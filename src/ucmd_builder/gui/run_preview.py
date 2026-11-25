@@ -346,7 +346,7 @@ class RunController(QObject):
 class RunPanel(QWidget):
     """Status, live plots and trajectory playback of the current run."""
 
-    frame = Signal(object)  # positions in nm
+    frame = Signal(object, object)  # positions and cell of the frame in nm (cell: or None)
     cancel_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -509,7 +509,7 @@ class RunPanel(QWidget):
         self.frame_label.setText(
             f"frame {k + 1}/{len(self.trajectory)}, {self.trajectory.times_ps[k]:.3f} ps"
         )
-        self.frame.emit(self.trajectory.positions_nm[k])
+        self.frame.emit(self.trajectory.positions_nm[k], self.trajectory.cell(k))
 
     def toggle_play(self) -> None:
         if self._player.isActive():

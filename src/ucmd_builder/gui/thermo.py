@@ -63,6 +63,11 @@ class ThermoTail:
         return np.array([row[k] for row in self._rows])
 
 
+# Columns that an engine may leave without a value ("nan") in some rows: the OpenMM bridge
+# evaluates the pressure less often than it writes the table. In any other column a nan is a
+# fault and is shown as one.
+SPARSE_COLUMNS = ("pressure_bar",)
+
 SUMMARY_COLUMNS = ("temperature_K", "pressure_bar", "potential_kjmol", "total_kjmol", "volume_nm3")
 
 
@@ -71,6 +76,7 @@ def summary(tail: ThermoTail, from_fraction: float = 0.5) -> dict:
 
     The drift is the least-squares slope of the conserved energy over the same window, in
     kJ/mol/ps. A display aid for watching a run; analysis belongs to ucmd-analysis.
+    A sparse column is averaged over the rows that have a value; `rows` says how many.
     """
     t = tail.column("time_ps")
     if len(t) == 0:
@@ -81,8 +87,12 @@ def summary(tail: ThermoTail, from_fraction: float = 0.5) -> dict:
         values = tail.column(name)
         if len(values) == len(t):
             w = values[window]
+            if name in SPARSE_COLUMNS:
+                w = w[~np.isnan(w)]
+            if not len(w):
+                continue
             sd = float(w.std(ddof=1)) if len(w) > 1 else 0.0
-            out[name] = {"mean": float(w.mean()), "sd": sd}
+            out[name] = {"mean": float(w.mean()), "sd": sd, "rows": len(w)}
     h = tail.column("conserved_energy_kjmol")
     if len(h) == len(t) and window.sum() > 1 and t[window][-1] > t[window][0]:
         out["drift_kjmol_per_ps"] = float(np.polyfit(t[window], h[window], 1)[0])
