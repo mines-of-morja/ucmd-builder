@@ -35,6 +35,7 @@ from .composition import CompositionDialog
 from .document import RecipeDocument
 from .molecule_file import MoleculeFileError, read_structures
 from .panels import LogPanel, PropertiesPanel
+from .ruler import RulerPanel
 from .run_preview import RunBrowser, RunController, RunDialog, RunPanel, write_run
 from .runs import RunInfo, RunSettings, new_run_dir, preview_cutoff, run_outputs, scan_runs
 from .scene import Scene, read_package
@@ -81,7 +82,12 @@ class MainWindow(QMainWindow):
         self.splitDockWidget(properties_dock, run_dock, Qt.Orientation.Vertical)
         self.resizeDocks([properties_dock, run_dock], [200, 700], Qt.Orientation.Vertical)
         self.resizeDocks([run_dock], [440], Qt.Orientation.Horizontal)
-        self.run_panel.frame.connect(self.viewer.show_positions)
+        self.ruler = RulerPanel()
+        ruler_dock = self._dock("Ruler", self.ruler, "right")
+        self.tabifyDockWidget(properties_dock, ruler_dock)
+        properties_dock.raise_()
+        self.ruler.changed.connect(self.viewer.highlight)
+        self.run_panel.frame.connect(self._show_frame)
         self.run_panel.cancel_requested.connect(self.stop_run)
         self.run_panel.structure.connect(lambda s: self.show_scene(s.scene))
         self._actions()
@@ -315,8 +321,15 @@ class MainWindow(QMainWindow):
 
     def show_scene(self, scene: Scene) -> None:
         self.scene = scene
+        self.ruler.set_scene(scene)
         self.viewer.show_scene(scene)
         self._update_actions()
+
+    def _show_frame(self, positions_nm, cell_nm) -> None:
+        self.viewer.show_positions(positions_nm, cell_nm)
+        self.ruler.set_positions(positions_nm, cell_nm)
+        if self.ruler.picked:  # the marks move with the atoms
+            self.viewer.highlight(self.ruler.picked)
 
     def open_package(self, path: Path | str) -> bool:
         """Show a package read-only."""
@@ -555,7 +568,7 @@ class MainWindow(QMainWindow):
         if self.scene is None:
             return
         self.properties.show_atom(self.scene.atom(index))
-        self.viewer.highlight([index])
+        self.ruler.pick(index)  # highlights what it holds
 
     def closeEvent(self, event) -> None:
         if self.is_running() and not self.ask("A run is going. Stop it and quit?"):
