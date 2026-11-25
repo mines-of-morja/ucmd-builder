@@ -178,9 +178,11 @@ class TablePage(QWidget):
             axis.setTitleText(box.currentText())
             if every:
                 low, high = min(p[k] for p in every), max(p[k] for p in every)
-                margin = 0.05 * ((high - low) or abs(high) or 1.0)
+                margin = 0.02 * ((high - low) or abs(high) or 1.0)
+                axis.setTickCount(6)
                 axis.setRange(low - margin, high + margin)
-                axis.setLabelFormat("%.3g")
+                axis.applyNiceNumbers()
+                axis.setLabelFormat("%g")
 
 
 class Notebook(QTabWidget):
@@ -210,6 +212,15 @@ class Notebook(QTabWidget):
     def show_fixed(self) -> None:
         if self._fixed:
             self.setCurrentWidget(self._fixed[0])
+
+    def set_page_visible(self, page: QWidget, visible: bool) -> None:
+        """Show or hide the tab of a page that stays; a hidden page is never in front."""
+        if not visible and self.currentWidget() is page:
+            self.show_fixed()
+        self.setTabVisible(self.indexOf(page), visible)
+
+    def page_titles(self) -> list[str]:
+        return [self.tabText(k) for k in range(self.count()) if self.isTabVisible(k)]
 
     def table_pages(self) -> list[TablePage]:
         pages = (self.widget(k) for k in range(self.count()))

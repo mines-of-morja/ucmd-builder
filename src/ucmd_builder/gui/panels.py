@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import time
 
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QPlainTextEdit, QTextBrowser, QWidget
 
 from ..forcefield.library import load_template
@@ -21,8 +22,18 @@ class LogPanel(QPlainTextEdit):
         self.setReadOnly(True)
         self.setMaximumBlockCount(10_000)
 
+    added = Signal(str, bool)  # the text, and whether it is a warning
+
     def add(self, text: str) -> None:
+        self._append(text, warning=False)
+
+    def warn(self, text: str) -> None:
+        """Something was refused or failed: the window shows the log."""
+        self._append(text, warning=True)
+
+    def _append(self, text: str, warning: bool) -> None:
         self.appendPlainText(f"{time.strftime('%H:%M:%S')}  {text}")
+        self.added.emit(text, warning)
 
 
 def _table(rows: list[tuple[str, str]]) -> str:

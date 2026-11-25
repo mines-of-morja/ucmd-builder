@@ -21,9 +21,12 @@ from PySide6.QtWidgets import (
     QDialog,
     QDockWidget,
     QFileDialog,
+    QLabel,
     QMainWindow,
     QMessageBox,
     QScrollArea,
+    QSizePolicy,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -58,7 +61,12 @@ def utc_now() -> str:
 
 
 class MainWindow(QMainWindow):
-    """Components | 3D view | properties, with the log below."""
+    """One window (design/B2d.md): a notebook in the middle, panels that follow its page.
+
+    Left: components. Middle: the 3D view with its playback bar, the plots of a run, result
+    tables. Right, beside the 3D view only: properties and ruler. Below: the log, opened by a
+    warning.
+    """
 
     def __init__(self, viewer: Viewer | None = None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -72,39 +80,55 @@ class MainWindow(QMainWindow):
         self._worker: BuildWorker | None = None
         self.run: RunController | None = None
         self.run_dir: Path | None = None
-        self.notebook = Notebook()
+        self.shown = ""  # what the 3D view shows, for the title
+        self._late_frame: tuple | None = None  # a frame that came while another page was in front
+        self._side: list[bool] | None = None  # which side panels were open beside the 3D view
+        self.run_panel = RunPanel()
+        self.view_page = QWidget()
+        column = QVBoxLayout(self.view_page)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(0)
         if isinstance(self.viewer, QWidget):
-            self.notebook.add_fixed(self.viewer, "3D view")
+            column.addWidget(self.viewer, 1)
+        else:
+            column.addStretch(1)
+        column.addWidget(self.run_panel.playback)
+        # in a scroll area: the plots must not force the height of the window
+        self.plots_page = QScrollArea()
+        self.plots_page.setWidget(self.run_panel)
+        self.plots_page.setWidgetResizable(True)
+        self.plots_page.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.plots_page.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.notebook = Notebook()
+        self.notebook.add_fixed(self.view_page, "3D view")
+        self.notebook.add_fixed(self.plots_page, "Plots")
+        self.notebook.set_page_visible(self.plots_page, False)
+        self.notebook.currentChanged.connect(self._page_changed)
+        self.run_panel.run_shown.connect(
+            lambda on: self.notebook.set_page_visible(self.plots_page, on)
+        )
         self.setCentralWidget(self.notebook)
         self.log = LogPanel()
         self.properties = PropertiesPanel()
         self.components = ComponentsPanel(self.document)
-        self._dock("Components", self.components, "left")
-        properties_dock = self._dock("Properties", self.properties, "right")
-        self._dock("Log", self.log, "bottom")
-        self.run_panel = RunPanel()
-        # in a scroll area: its plots must not force the height of the window
-        scroll = QScrollArea()
-        scroll.setWidget(self.run_panel)
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        run_dock = self._dock("Run", scroll, "right")
-        self.splitDockWidget(properties_dock, run_dock, Qt.Orientation.Vertical)
+        self.components_dock = self._dock("Components", self.components, "left")
+        self.properties_dock = self._dock("Properties", self.properties, "right")
         self.ruler = RulerPanel()
-        ruler_dock = self._dock("Ruler", self.ruler, "right")
-        self.tabifyDockWidget(properties_dock, ruler_dock)
-        properties_dock.raise_()
-        self.ruler_dock, self.run_dock = ruler_dock, run_dock
+        self.ruler_dock = self._dock("Ruler", self.ruler, "right")
+        self.tabifyDockWidget(self.properties_dock, self.ruler_dock)
+        self.properties_dock.raise_()
+        self.log_dock = self._dock("Log", self.log, "bottom")
+        self.log_dock.hide()
+        self.log.added.connect(self._log_added)
         self.ruler.changed.connect(self.viewer.highlight)
         self.run_panel.frame.connect(self._show_frame)
         self.run_panel.cancel_requested.connect(self.stop_run)
-        self.run_panel.structure.connect(lambda s: self.show_scene(s.scene))
+        self.run_panel.structure.connect(self._show_structure)
         self._actions()
         self.document.changed.connect(self._recipe_changed)
         self.document.path_changed.connect(lambda _p: self._update_title())
         self.document.undo_stack.cleanChanged.connect(self._clean_changed)
-        self.components.message.connect(self.log.add)
+        self.components.message.connect(self.log.warn)
         self.components.selected.connect(self._component_selected)
         self.components.composition_requested.connect(self.edit_composition)
         self.viewer.on_pick(self._atom_picked)
@@ -116,13 +140,46 @@ class MainWindow(QMainWindow):
         self._size_docks()
 
     def _size_docks(self) -> None:
-        self.resizeDocks([self.ruler_dock, self.run_dock], [200, 700], Qt.Orientation.Vertical)
-        self.resizeDocks([self.run_dock], [440], Qt.Orientation.Horizontal)
+        self.resizeDocks(
+            [self.components_dock, self.ruler_dock], [240, 300], Qt.Orientation.Horizontal
+        )
+        self.resizeDocks([self.log_dock], [110], Qt.Orientation.Vertical)
 
     def reset_layout(self) -> None:
         """Every panel back to its place and size."""
+        self._side = None
         self.restoreState(self._default_layout)
         self._size_docks()
+        self._page_changed()
+
+    def _page_changed(self, _index: int = 0) -> None:
+        """Properties and ruler belong to the 3D view; a frame it missed is shown now."""
+        panels = (self.properties_dock, self.ruler_dock)
+        in_front = self.notebook.currentWidget() is self.view_page
+        if not in_front and self._side is None:
+            self._side = [not d.isHidden() for d in panels]
+            for dock in panels:
+                dock.hide()
+        elif in_front and self._side is not None:
+            for dock, was_open in zip(panels, self._side, strict=True):
+                dock.setVisible(was_open)
+            self._side = None
+        if in_front and self._late_frame is not None:
+            frame, self._late_frame = self._late_frame, None
+            self._draw_frame(*frame)
+
+    def _log_added(self, text: str, warning: bool) -> None:
+        self.statusBar().showMessage(text)
+        if warning:
+            self.log_dock.show()
+
+    def _set_shown(self, text: str) -> None:
+        self.shown = text
+        self.shown_label.setText(text)
+        self.shown_label.setToolTip(text)
+        self._update_title()
+        # components of a recipe, or of the one to be made; not next to somebody's results
+        self.components_dock.setVisible(bool(self.document.recipe.components) or not text)
 
     def fit_to_screen(self) -> None:
         """Never larger than the screen the window opens on."""
@@ -162,6 +219,7 @@ class MainWindow(QMainWindow):
         self.act_cancel = self._action("Cancel", self.cancel_build)
         self.act_export = self._action("Export package…", self._export_dialog, "Ctrl+E")
         self.act_run = self._action("Run…", self._run_dialog, "Ctrl+R")
+        self.act_stop = self._action("Stop run", self.stop_run)
         self.act_open_run = self._action("Open run…", self._open_run_dialog)
         self.act_open_molecule = self._action("Open molecule…", self._open_molecule_dialog)
         self.act_open_tables = self._action("Open tables…", self._open_tables_dialog)
@@ -195,6 +253,7 @@ class MainWindow(QMainWindow):
         menu.addAction(self._action("Reset layout", self.reset_layout))
         menu = self.menuBar().addMenu("&Run")
         menu.addAction(self.act_run)
+        menu.addAction(self.act_stop)
         menu.addAction(self.act_open_run)
         toolbar = self.addToolBar("Main")
         toolbar.setObjectName("Main")
@@ -209,9 +268,14 @@ class MainWindow(QMainWindow):
         toolbar.addSeparator()
         toolbar.addAction(self.act_export)
         toolbar.addAction(self.act_run)
+        toolbar.addAction(self.act_stop)
         toolbar.addAction(self.act_open_run)
         toolbar.addSeparator()
         toolbar.addAction(self.act_images)
+        self.shown_label = QLabel()
+        self.shown_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.shown_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        toolbar.addWidget(self.shown_label)
         self.toolbar = toolbar
 
     def _clean_changed(self, clean: bool) -> None:
@@ -225,7 +289,10 @@ class MainWindow(QMainWindow):
             modified = self.document.modified
         star = "*" if modified else ""
         where = f" ({self.document.path})" if self.document.path else ""
-        self.setWindowTitle(f"{recipe.name}{star}{where} — {TITLE}")
+        name = f"{recipe.name}{star}{where}"
+        mine = recipe.components or self.document.path or modified or not self.shown
+        parts = ([self.shown] if self.shown else []) + ([name] if mine else [])
+        self.setWindowTitle(f"{' · '.join(parts)} — {TITLE}")
 
     def _update_actions(self) -> None:
         building = self._worker is not None
@@ -234,25 +301,29 @@ class MainWindow(QMainWindow):
         self.act_export.setEnabled(not building and self.built is not None)
         runnable = self.package_path is not None or self.built is not None
         self.act_run.setEnabled(not building and not self.is_running() and runnable)
+        self.act_stop.setEnabled(self.is_running())
         self.act_open_run.setEnabled(not building and not self.is_running())
         self.act_open_molecule.setEnabled(not building and not self.is_running())
 
     # -- recipe --------------------------------------------------------------------------------
 
-    def _recipe_changed(self, _recipe) -> None:
+    def _recipe_changed(self, recipe) -> None:
         self._update_title()
+        if recipe.components:
+            self.components_dock.show()
         self._update_actions()
 
     def new_recipe(self) -> None:
         if self._discard_ok():
             self.document.new()
+            self.components_dock.show()
             self.log.add("new recipe")
 
     def open_recipe(self, path: Path | str) -> bool:
         try:
             self.document.open(path)
         except RecipeError as e:
-            self.log.add(f"cannot open {path}: {e}")
+            self.log.warn(f"cannot open {path}: {e}")
             return False
         self.log.add(f"opened {path}")
         return True
@@ -261,7 +332,7 @@ class MainWindow(QMainWindow):
         try:
             saved = self.document.save(path)
         except (RecipeError, OSError) as e:
-            self.log.add(f"not saved: {e}")
+            self.log.warn(f"not saved: {e}")
             return None
         self.log.add(f"saved {saved}")
         return saved
@@ -340,9 +411,10 @@ class MainWindow(QMainWindow):
         if "notes" in built.provenance:
             self.log.add(f"note: {built.provenance['notes']}")
         self.show_scene(Scene.from_document(system_document(built, utc_now()), built.positions_nm))
+        self._set_shown(f"{self.document.recipe.name}, built · {built.atom_count} atoms")
 
     def _build_failed(self, reason: str) -> None:
-        self.log.add(f"build failed: {reason}")
+        self.log.warn(f"build failed: {reason}")
 
     def _build_done(self) -> None:
         if self._thread is not None:
@@ -354,14 +426,25 @@ class MainWindow(QMainWindow):
 
     def show_scene(self, scene: Scene) -> None:
         self.scene = scene
+        self._late_frame = None
         self.ruler.set_scene(scene)
         self.notebook.show_fixed()
         self.viewer.show_scene(scene)
         self._update_actions()
 
+    def _show_structure(self, structure) -> None:
+        self.show_scene(structure.scene)
+        self._set_shown(f"{structure.name} · {structure.scene.n_atoms} atoms · bonds guessed")
+
     def _show_frame(self, positions_nm, cell_nm) -> None:
-        self.viewer.show_positions(positions_nm, cell_nm)
         self.ruler.set_positions(positions_nm, cell_nm)
+        if self.notebook.currentWidget() is self.view_page:
+            self._draw_frame(positions_nm, cell_nm)
+        else:  # nobody sees it: drawn when the page is in front again
+            self._late_frame = (positions_nm, cell_nm)
+
+    def _draw_frame(self, positions_nm, cell_nm) -> None:
+        self.viewer.show_positions(positions_nm, cell_nm)
         if self.ruler.picked:  # the marks move with the atoms
             self.viewer.highlight(self.ruler.picked)
 
@@ -370,25 +453,26 @@ class MainWindow(QMainWindow):
         try:
             scene = read_package(path)
         except (OSError, ValueError, KeyError) as e:
-            self.log.add(f"cannot open package {path}: {e}")
+            self.log.warn(f"cannot open package {path}: {e}")
             return False
         self.built = None
         self.run_panel.close_structures()
         self.package_path = Path(path)
         self.show_scene(scene)
+        self._set_shown(f"{self.package_path.name} · {scene.n_atoms} atoms")
         self.log.add(f"opened package {path}: {scene.n_atoms} atoms (read-only)")
         return True
 
     def export_package(self, path: Path | str, overwrite: bool = False) -> Path | None:
         """Write the built system as a validated package, and the recipe next to it."""
         if self.built is None:
-            self.log.add("nothing to export: build first")
+            self.log.warn("nothing to export: build first")
             return None
         path = Path(path)
         try:
             out = write_package(self.built, path, overwrite=overwrite, created_utc=utc_now())
         except Exception as e:  # validation failures and I/O errors go to the log
-            self.log.add(f"export failed: {type(e).__name__}: {e}")
+            self.log.warn(f"export failed: {type(e).__name__}: {e}")
             return None
         recipe_file = out.parent / f"{out.stem}.recipe.toml"
         recipe_file.write_text(to_toml(self.document.recipe), encoding="utf-8")
@@ -442,12 +526,12 @@ class MainWindow(QMainWindow):
             return None
         ucmd = executable("ucmd")
         if ucmd is None:
-            self.log.add("no engine: set [executables] ucmd in the machine profile (Run preview…)")
+            self.log.warn("no engine: set [executables] ucmd in the machine profile (Run preview…)")
             return None
         try:
             cutoff, warning = preview_cutoff(self.scene.cell_nm)
         except (TypeError, ValueError) as e:
-            self.log.add(f"cannot run: {e}")
+            self.log.warn(f"cannot run: {e}")
             return None
         if warning:
             self.log.add(warning)
@@ -465,6 +549,7 @@ class MainWindow(QMainWindow):
         self.run.stage.connect(lambda stage: self.statusBar().showMessage(f"engine: {stage}"))
         self.run.finished.connect(self._run_finished)
         self.run_panel.begin(run_outputs(run_dir))
+        self._set_shown(f"run {run_dir.name} of {self.package_path.name}")
         self.run.start()
         self._update_actions()
         return run_dir
@@ -474,7 +559,7 @@ class MainWindow(QMainWindow):
             self.run.cancel()
 
     def _run_finished(self, code: int, message: str) -> None:
-        self.log.add(f"run {message}")
+        (self.log.add if code == 0 else self.log.warn)(f"run {message}")
         if self.run_dir is not None:
             self.run_panel.end(message)
         self.statusBar().showMessage(f"run {message}")
@@ -490,13 +575,13 @@ class MainWindow(QMainWindow):
         `ucmd run`. A run short of its last step is followed: plots and XYZ frames keep growing.
         """
         if self.is_running():
-            self.log.add("a run is going; stop it before opening another")
+            self.log.warn("a run is going; stop it before opening another")
             return False
         path = Path(path)
         if not (path.is_file() or (path / "run.toml").is_file()):
             runs = scan_runs(path) if path.is_dir() else []
             if not runs:
-                self.log.add(f"cannot open run: no run.toml in or below {path}")
+                self.log.warn(f"cannot open run: no run.toml in or below {path}")
                 return False
             chosen = runs[0] if len(runs) == 1 else self.choose_run(path, runs)
             if chosen is None:
@@ -505,10 +590,10 @@ class MainWindow(QMainWindow):
         try:
             outputs = run_outputs(path)
         except (OSError, ValueError) as e:
-            self.log.add(f"cannot open run: {e}")
+            self.log.warn(f"cannot open run: {e}")
             return False
         if not outputs.system.is_dir():
-            self.log.add(
+            self.log.warn(
                 f"cannot open run {path}: its package {outputs.system} does not exist "
                 "(for a GUI run: did the minimization finish?)"
             )
@@ -516,11 +601,12 @@ class MainWindow(QMainWindow):
         if not self.open_package(outputs.system):
             return False
         self.run_dir = outputs.run_dir
+        self._set_shown(outputs.title)
         self.run_panel.show_run(outputs)
         trajectory = self.run_panel.trajectory
         if trajectory is not None and len(trajectory) and self.scene is not None:
             if trajectory.positions_nm.shape[1] != self.scene.n_atoms:
-                self.log.add(
+                self.log.warn(
                     f"the trajectory has {trajectory.positions_nm.shape[1]} atoms, the package "
                     f"{self.scene.n_atoms}: not played"
                 )
@@ -550,14 +636,14 @@ class MainWindow(QMainWindow):
     def open_molecules(self, paths: list[Path | str]) -> bool:
         """Show molecule files (XYZ): structures to look at, never to run or export."""
         if self.is_running() or self.is_building():
-            self.log.add("wait for the build or stop the run before opening a molecule file")
+            self.log.warn("wait for the build or stop the run before opening a molecule file")
             return False
         structures = []
         for path in paths:
             try:
                 structures += read_structures(path)
             except (OSError, MoleculeFileError) as e:
-                self.log.add(f"cannot open {path}: {e}")
+                self.log.warn(f"cannot open {path}: {e}")
                 return False
         if not structures:
             return False
@@ -565,9 +651,7 @@ class MainWindow(QMainWindow):
         self.package_path = None
         self.run_dir = None
         self.run_panel.show_structures(structures)
-        # no plots to show: the room goes to the ruler
         self.ruler_dock.raise_()
-        self.resizeDocks([self.ruler_dock, self.run_dock], [500, 300], Qt.Orientation.Vertical)
         files = "file" if len(structures) == 1 else "files"
         frames = sum(len(s.trajectory) for s in structures)
         self.log.add(
@@ -589,7 +673,7 @@ class MainWindow(QMainWindow):
             try:
                 page = self.notebook.add_table(path)
             except (OSError, TableError) as e:
-                self.log.add(f"cannot open table {path}: {e}")
+                self.log.warn(f"cannot open table {path}: {e}")
                 ok = False
                 continue
             self.log.add(f"opened table {path}: {len(page.table.rows)} rows")

@@ -64,8 +64,8 @@ class _Chart(QChartView):
         self.setMinimumHeight(MIN_CHART_HEIGHT)
         self.x_axis = QValueAxis()
         self.x_axis.setTitleText("time (ps)")
-        self.x_axis.setLabelFormat("%.2f")
-        self.x_axis.setTickCount(5)
+        self.x_axis.setLabelFormat("%g")
+        self.x_axis.setTickCount(6)
         self.y_axis = QValueAxis()
         self.y_axis.setTitleText(y_label)
         self.y_axis.setLabelFormat(y_format)
@@ -103,7 +103,9 @@ class _Chart(QChartView):
             return
         span = (max(ys) - min(ys)) or abs(max(ys)) or 1.0
         self.x_axis.setRange(min(xs), max(max(xs), min(xs) + 1e-3))
-        self.y_axis.setRange(min(ys) - 0.05 * span, max(ys) + 0.05 * span)
+        self.y_axis.setRange(min(ys) - 0.02 * span, max(ys) + 0.02 * span)
+        for axis in (self.x_axis, self.y_axis):
+            axis.applyNiceNumbers()
 
 
 class LivePlots(QWidget):
@@ -111,22 +113,22 @@ class LivePlots(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.temperature = _Chart("T (K)", "%.0f")
+        self.temperature = _Chart("T (K)", "%g")
         self.temperature.line("temperature_K", "temperature")
         self.temperature.line("target", "target", dashed=True)
-        self.energy = _Chart("E (kJ/mol)", "%.0f")
+        self.energy = _Chart("E (kJ/mol)", "%g")
         for key, name in ENERGIES:
             self.energy.line(key, name)
-        self.conservation = _Chart("H − H₀ (kJ/mol)", "%.1f")
+        self.conservation = _Chart("H − H₀ (kJ/mol)", "%g")
         self.conservation.line("conserved_change", "conserved energy − first value")
-        self.pressure = _Chart("P (bar)", "%.0f")
+        self.pressure = _Chart("P (bar)", "%g")
         self.pressure.line("pressure_bar", "total")
         self.pressure.line("pressure_kinetic", "kinetic 2K/3V")
         self.pressure.line("pressure_forces", "forces W/3V")
         self.pressure.line(
             "pressure_average", f"total, {MOVING_AVERAGE_PS:g} ps average", dashed=True
         )
-        self.volume = _Chart("V (nm³)", "%.2f")
+        self.volume = _Chart("V (nm³)", "%g")
         self.volume.line("volume_nm3", "cell volume")
         self.tabs = QTabWidget()
         self.tabs.addTab(self.energy, "Energies")

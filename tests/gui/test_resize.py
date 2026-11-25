@@ -39,6 +39,8 @@ def open_nothing(window, tmp_path: Path) -> None:
 
 
 def open_plots(window, tmp_path: Path) -> None:
+    window.notebook.set_page_visible(window.plots_page, True)
+    window.notebook.setCurrentWidget(window.plots_page)
     window.run_panel.plots.update_from(tail(thermo(tmp_path / "t.tsv", rows=1000)))
     window.run_panel.status.setText("2026-11-24_parameter-sensitivity-1M: a long title " * 2)
 
@@ -87,7 +89,8 @@ def test_reset_layout_shows_every_panel_again(window) -> None:
         dock.setFloating(True)
     window.reset_layout()
     for dock in window.findChildren(QDockWidget):
-        assert not dock.isHidden() and not dock.isFloating()
+        # the log stays folded until a warning
+        assert dock.isHidden() == (dock is window.log_dock) and not dock.isFloating()
 
 
 def test_a_long_curve_is_drawn_with_few_points(qtbot, tmp_path: Path) -> None:

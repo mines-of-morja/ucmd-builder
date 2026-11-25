@@ -345,11 +345,12 @@ class RunController(QObject):
 
 
 class RunPanel(QWidget):
-    """Status, live plots and trajectory playback of the current run."""
+    """Status and live plots of the current run; `playback` is its bar under the 3D view."""
 
     frame = Signal(object, object)  # positions and cell of the frame in nm (cell: or None)
     cancel_requested = Signal()
     structure = Signal(object)  # the Structure of a molecule file to show
+    run_shown = Signal(bool)  # whether there is a run to plot
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -371,16 +372,22 @@ class RunPanel(QWidget):
         top = QHBoxLayout()
         top.addWidget(self.status, 1)
         top.addWidget(self.cancel_button)
-        playback = QHBoxLayout()
-        playback.addWidget(self.play_button)
-        playback.addWidget(self.slider, 1)
         layout = QVBoxLayout(self)
         layout.addLayout(top)
-        layout.addWidget(self.structure_box)
         layout.addWidget(self.plots, 1)
-        layout.addLayout(playback)
-        layout.addWidget(self.frame_label)
-        layout.addStretch(0)  # takes the room of the plots while they are hidden
+        self.playback = QWidget()
+        self.frame_label.setMinimumWidth(1)  # may be cut; the slider keeps its room
+        bar = QHBoxLayout(self.playback)
+        bar.setContentsMargins(4, 2, 4, 2)
+        bar.addWidget(self.structure_box, 1)
+        bar.addWidget(self.play_button)
+        bar.addWidget(self.slider, 3)
+        bar.addWidget(self.frame_label)
+        self.structure_box.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.structure_box.setMinimumContentsLength(8)
+        self.playback.hide()
         self.tail: ThermoTail | None = None
         self.trajectory: Trajectory | None = None
         self.outputs: RunOutputs | None = None
@@ -401,6 +408,7 @@ class RunPanel(QWidget):
         self.outputs = outputs
         self.structures = []
         self.structure_box.hide()
+        self.playback.hide()
         self.plots.show()
         thermo = outputs.thermo if outputs is not None else None
         path = outputs.trajectory if outputs is not None else None
@@ -415,6 +423,7 @@ class RunPanel(QWidget):
         self.slider.setEnabled(False)
         self.frame_label.setText("–")
         self.plots.reset(outputs.target_K if outputs is not None else None)
+        self.run_shown.emit(outputs is not None)
 
     def show_structures(self, structures: list[Structure]) -> None:
         """Molecule files: no plots; a list of structures, each with its frames."""
@@ -452,6 +461,7 @@ class RunPanel(QWidget):
         )
         self.trajectory = chosen.trajectory
         several = frames > 1
+        self.playback.setVisible(several or len(self.structures) > 1)
         self.slider.setRange(0, frames - 1)
         self.slider.setEnabled(several)
         self.play_button.setEnabled(several)
@@ -536,6 +546,7 @@ class RunPanel(QWidget):
         self.trajectory = trajectory
         if not len(trajectory):
             return
+        self.playback.show()
         self.slider.setRange(0, len(trajectory) - 1)
         self.slider.setEnabled(True)
         self.play_button.setEnabled(True)
