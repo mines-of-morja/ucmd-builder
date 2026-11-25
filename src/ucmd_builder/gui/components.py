@@ -163,12 +163,13 @@ class ComponentsPanel(QWidget):
         self.remove_button = QPushButton("Remove")
         self.composition_button = QPushButton("Composition…")
         buttons = QHBoxLayout()
-        for b in (self.add_button, self.remove_button, self.composition_button):
+        for b in (self.add_button, self.remove_button):
             buttons.addWidget(b)
         layout = QVBoxLayout(self)
         layout.addWidget(self.forcefield)
         layout.addWidget(self.table)
         layout.addLayout(buttons)
+        layout.addWidget(self.composition_button)
         self.add_button.clicked.connect(self.add)
         self.remove_button.clicked.connect(self.remove_selected)
         self.composition_button.clicked.connect(self.composition_requested)

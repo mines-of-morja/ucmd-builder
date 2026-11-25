@@ -63,8 +63,12 @@ class TablePage(QWidget):
     def __init__(self, table: Table, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.table = table
-        title = QLabel(f"<b>{table.title}</b>")
-        title.setTextFormat(Qt.TextFormat.RichText)
+        title = QLabel(table.title)
+        font = title.font()
+        font.setBold(True)
+        title.setFont(font)
+        title.setTextFormat(Qt.TextFormat.PlainText)
+        title.setWordWrap(True)
         self.notes = QLabel("\n".join(table.notes))
         self.notes.setTextFormat(Qt.TextFormat.PlainText)
         self.notes.setWordWrap(True)
@@ -123,12 +127,16 @@ class TablePage(QWidget):
         chart.addAxis(self.y_axis, Qt.AlignmentFlag.AlignLeft)
         self.view = QChartView(chart)
         self.view.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.view.setMinimumHeight(120)
         controls = QHBoxLayout()
         for label, box in (("x", self.x_box), ("y", self.y_box), ("by", self.group_box)):
             controls.addWidget(QLabel(label))
-            controls.addWidget(box)
+            box.setSizeAdjustPolicy(
+                QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+            )
+            box.setMinimumContentsLength(8)
+            controls.addWidget(box, 1)
             box.currentIndexChanged.connect(lambda _i: self.draw())
-        controls.addStretch(1)
         area = QWidget()
         inner = QVBoxLayout(area)
         inner.setContentsMargins(0, 0, 0, 0)

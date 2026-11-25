@@ -14,6 +14,8 @@ A summary line under the tabs gives means over the second half of the table and 
 
 from __future__ import annotations
 
+from itertools import pairwise
+
 import numpy as np
 from PySide6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
 from PySide6.QtCore import QMargins, QPointF, Qt
@@ -23,7 +25,8 @@ from PySide6.QtWidgets import QLabel, QTabWidget, QVBoxLayout, QWidget
 from ..constants import BAR_PER_KJMOL_NM3
 from .thermo import ThermoTail, summary
 
-MIN_CHART_HEIGHT = 230
+MIN_CHART_HEIGHT = 130
+MAX_POINTS = 2000  # drawn per curve; more only make resizing slow
 MOVING_AVERAGE_PS = 1.0
 ENERGIES = (
     ("potential_kjmol", "potential"),
@@ -31,6 +34,23 @@ ENERGIES = (
     ("total_kjmol", "total"),
     ("conserved_energy_kjmol", "conserved"),
 )
+
+
+def envelope(x, y) -> tuple[np.ndarray, np.ndarray]:
+    """At most MAX_POINTS points of a curve: the lowest and the highest of every stretch, and
+    both ends. Only points of the curve are returned, so its range and every spike stay; a nan
+    is kept as well (it is the extreme of its stretch)."""
+    x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
+    n = len(x)
+    if n <= MAX_POINTS:
+        return x, y
+    edges = np.linspace(0, n, MAX_POINTS // 2, dtype=int)
+    keep = [0, n - 1]
+    for lo, hi in pairwise(edges):
+        part = y[lo:hi]
+        keep += [lo + int(part.argmin()), lo + int(part.argmax())]
+    index = np.unique(keep)
+    return x[index], y[index]
 
 
 class _Chart(QChartView):
@@ -68,14 +88,19 @@ class _Chart(QChartView):
         return series
 
     def set_data(self, key: str, xs, ys) -> None:
-        self.series[key].replace([QPointF(float(x), float(y)) for x, y in zip(xs, ys, strict=True)])
+        xs, ys = envelope(xs, ys)
+        self.series[key].replace(
+            [QPointF(x, y) for x, y in zip(xs.tolist(), ys.tolist(), strict=True)]
+        )
 
     def rescale(self) -> None:
         points = [p for s in self.series.values() for p in s.points()]
         if not points:
             return
         xs = [p.x() for p in points]
-        ys = [p.y() for p in points]
+        ys = [p.y() for p in points if np.isfinite(p.y())]
+        if not ys:
+            return
         span = (max(ys) - min(ys)) or abs(max(ys)) or 1.0
         self.x_axis.setRange(min(xs), max(max(xs), min(xs) + 1e-3))
         self.y_axis.setRange(min(ys) - 0.05 * span, max(ys) + 0.05 * span)
@@ -113,8 +138,8 @@ class LivePlots(QWidget):
         self.summary.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.temperature)
-        layout.addWidget(self.tabs)
+        layout.addWidget(self.temperature, 1)
+        layout.addWidget(self.tabs, 1)
         layout.addWidget(self.summary)
         self.target_K: float | None = None
         self.charts = (self.temperature, self.energy, self.conservation, self.pressure, self.volume)

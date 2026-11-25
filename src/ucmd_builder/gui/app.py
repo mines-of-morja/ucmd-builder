@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QMainWindow,
     QMessageBox,
+    QScrollArea,
     QWidget,
 )
 
@@ -82,10 +83,14 @@ class MainWindow(QMainWindow):
         properties_dock = self._dock("Properties", self.properties, "right")
         self._dock("Log", self.log, "bottom")
         self.run_panel = RunPanel()
-        run_dock = self._dock("Run", self.run_panel, "right")
+        # in a scroll area: its plots must not force the height of the window
+        scroll = QScrollArea()
+        scroll.setWidget(self.run_panel)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        run_dock = self._dock("Run", scroll, "right")
         self.splitDockWidget(properties_dock, run_dock, Qt.Orientation.Vertical)
-        self.resizeDocks([properties_dock, run_dock], [200, 700], Qt.Orientation.Vertical)
-        self.resizeDocks([run_dock], [440], Qt.Orientation.Horizontal)
         self.ruler = RulerPanel()
         ruler_dock = self._dock("Ruler", self.ruler, "right")
         self.tabifyDockWidget(properties_dock, ruler_dock)
@@ -106,7 +111,23 @@ class MainWindow(QMainWindow):
         self._update_title()
         self._update_actions()
         self.statusBar().showMessage("Add components, then Build. Right-click an atom for details.")
+        self._default_layout = self.saveState()
         self.resize(1400, 900)
+        self._size_docks()
+
+    def _size_docks(self) -> None:
+        self.resizeDocks([self.ruler_dock, self.run_dock], [200, 700], Qt.Orientation.Vertical)
+        self.resizeDocks([self.run_dock], [440], Qt.Orientation.Horizontal)
+
+    def reset_layout(self) -> None:
+        """Every panel back to its place and size."""
+        self.restoreState(self._default_layout)
+        self._size_docks()
+
+    def fit_to_screen(self) -> None:
+        """Never larger than the screen the window opens on."""
+        screen = self.screen().availableGeometry()
+        self.resize(min(self.width(), screen.width()), min(self.height(), screen.height()))
 
     # -- layout and actions --------------------------------------------------------------------
 
@@ -167,6 +188,11 @@ class MainWindow(QMainWindow):
         menu.addAction(self.act_cancel)
         menu = self.menuBar().addMenu("&View")
         menu.addAction(self.act_images)
+        menu.addSeparator()
+        for dock in self.findChildren(QDockWidget):
+            menu.addAction(dock.toggleViewAction())
+        menu.addSeparator()
+        menu.addAction(self._action("Reset layout", self.reset_layout))
         menu = self.menuBar().addMenu("&Run")
         menu.addAction(self.act_run)
         menu.addAction(self.act_open_run)
@@ -638,5 +664,6 @@ def run_app(argv: list[str]) -> int:
     use_c_numeric_locale()
     window = MainWindow()
     window.open_paths([Path(a) for a in argv])
+    window.fit_to_screen()
     window.show()
     return app.exec()

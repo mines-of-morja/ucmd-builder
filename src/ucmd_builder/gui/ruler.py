@@ -84,7 +84,9 @@ class RulerPanel(QWidget):
         self.positions: np.ndarray = np.empty((0, 3))
         self.cell: np.ndarray | None = None
         self.picked: list[int] = []
-        self.measure = QCheckBox("Measure: right-click two atoms (distance) or three (angle)")
+        self.measure = QCheckBox("Measure")
+        hint = QLabel("Right-click two atoms for a distance, three for an angle.")
+        hint.setWordWrap(True)
         clear = QPushButton("Clear")
         clear.clicked.connect(self.clear)
         self.result = QLabel("–")
@@ -106,6 +108,7 @@ class RulerPanel(QWidget):
         pick.addWidget(QLabel("to the last picked atom"), 1)
         layout = QVBoxLayout(self)
         layout.addLayout(top)
+        layout.addWidget(hint)
         layout.addWidget(self.result)
         layout.addLayout(pick)
         layout.addWidget(self.table, 1)
