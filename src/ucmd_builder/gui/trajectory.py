@@ -12,6 +12,7 @@ Two formats, chosen by the file name the run writes (`[output.trajectory] file`)
 from __future__ import annotations
 
 import re
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -19,12 +20,50 @@ import numpy as np
 
 from ..constants import ANGSTROM_IN_NM
 
+CACHE_BYTES = 64 * 1024 * 1024  # frames kept by H5Positions
+
+
+class H5Positions:
+    """The positions of an H5MD file, one frame read when it is asked for.
+
+    The file is opened for the moment of reading and without an HDF5 lock, so a looking GUI never
+    keeps an engine from continuing the run. If the file no longer has the step it had when it
+    was opened (the run was restarted), a frame is an error, never another frame.
+    """
+
+    def __init__(self, path: Path, steps: np.ndarray, shape: tuple[int, ...]) -> None:
+        self.path, self.steps, self.shape = path, steps, shape
+        self._cache: OrderedDict[int, np.ndarray] = OrderedDict()
+        self._room = max(1, CACHE_BYTES // max(1, shape[1] * 3 * 4))
+
+    def __len__(self) -> int:
+        return self.shape[0]
+
+    def __getitem__(self, k: int) -> np.ndarray:
+        import h5py
+
+        k = range(len(self))[k]  # negative indices, IndexError
+        if k in self._cache:
+            self._cache.move_to_end(k)
+            return self._cache[k]
+        with h5py.File(self.path, "r", locking=False) as fh:
+            group = fh["particles/all/position"]
+            if k >= len(group["step"]) or int(group["step"][k]) != int(self.steps[k]):
+                raise ValueError(f"{self.path.name} has changed; open the run again")
+            frame = np.asarray(group["value"][k], dtype=np.float32)
+        if frame.shape != self.shape[1:]:
+            raise ValueError(f"{self.path.name} has changed; open the run again")
+        self._cache[k] = frame
+        while len(self._cache) > self._room:
+            self._cache.popitem(last=False)
+        return frame
+
 
 @dataclass(frozen=True, eq=False)
 class Trajectory:
     steps: np.ndarray
     times_ps: np.ndarray
-    positions_nm: np.ndarray  # (frames, atoms, 3)
+    positions_nm: np.ndarray | H5Positions  # (frames, atoms, 3); [k] is one frame
     cells_nm: np.ndarray | None = None  # (frames, 3, 3), rows a, b, c; None: the package's cell
     labels: tuple[str, ...] | None = None  # instead of the time, for frames without one
 
@@ -38,14 +77,15 @@ class Trajectory:
 def read_h5md(path: Path | str) -> Trajectory:
     import h5py
 
-    with h5py.File(path, "r") as fh:
+    path = Path(path)
+    with h5py.File(path, "r", locking=False) as fh:
         group = fh["particles/all/position"]
         steps = np.asarray(group["step"][()], dtype=np.int64)
         return Trajectory(
             cells_nm=_cells(fh, steps),
             steps=steps,
             times_ps=np.asarray(group["time"][()], dtype=float),
-            positions_nm=np.asarray(group["value"][()], dtype=float),
+            positions_nm=H5Positions(path, steps, group["value"].shape),
         )
 
 

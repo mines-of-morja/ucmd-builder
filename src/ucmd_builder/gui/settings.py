@@ -63,6 +63,13 @@ class Settings:
         self.recent = [text, *(r for r in self.recent if r != text)][:MAX_RECENT]
         self.save()
 
+    def forget(self, path: Path | str) -> None:
+        """Take a path that cannot be opened off the recent list."""
+        text = str(Path(path).resolve())
+        if text in self.recent:
+            self.recent.remove(text)
+            self.save()
+
     def save(self) -> None:
         if self.path is None:
             return

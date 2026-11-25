@@ -121,3 +121,22 @@ def test_the_envelope_shows_a_nan_column() -> None:
     y = np.ones(10_000)
     y[5_000] = np.nan
     assert np.isnan(envelope(x, y)[1]).any()
+
+
+def test_a_chart_draws_the_numbers_of_the_table_when_it_is_shown(qtbot, tmp_path: Path) -> None:
+    plots = LivePlots()
+    qtbot.addWidget(plots)
+    table = tail(thermo(tmp_path / "t.tsv", rows=300, every=1))
+    plots.update_from(table)
+    assert plots.pressure.series["pressure_bar"].count() == 0  # nobody sees it
+    assert plots.points("pressure_bar") == 300
+    plots.show()
+    plots.tabs.setCurrentWidget(plots.pressure)
+    points = plots.pressure.series["pressure_bar"].points()
+    assert [p.x() for p in points] == pytest.approx(list(table.column("time_ps")))
+    assert [p.y() for p in points] == pytest.approx(list(table.column("pressure_bar")))
+    drawn = [p.y() for p in plots.temperature.series["temperature_K"].points()]
+    assert drawn == pytest.approx(list(table.column("temperature_K")))
+    assert plots.pressure.y_axis.min() <= 10.0 and plots.pressure.y_axis.max() >= 309.0
+    plots.reset(None)
+    assert plots.points("pressure_bar") == 0

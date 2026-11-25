@@ -58,6 +58,7 @@ def test_the_pressure_plot_skips_empty_rows(qtbot, tmp_path: Path) -> None:
     plots = LivePlots()
     qtbot.addWidget(plots)
     plots.update_from(tail(thermo(tmp_path / "t.tsv")))
+    plots.pressure.draw()
     for key in ("pressure_bar", "pressure_kinetic", "pressure_forces", "pressure_average"):
         series = plots.pressure.series[key]
         assert series.count() == 20

@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCharts import QChart, QChartView, QScatterSeries, QValueAxis
-from PySide6.QtCore import QMargins, Qt
+from PySide6.QtCore import QMargins, Qt, Signal
 from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -58,7 +58,9 @@ class _Cell(QTableWidgetItem):
 
 
 class TablePage(QWidget):
-    """One result table and its plot."""
+    """One result table and its plot. A row of a table with a column `run` names a run."""
+
+    run_requested = Signal(str)
 
     def __init__(self, table: Table, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -69,13 +71,18 @@ class TablePage(QWidget):
         title.setFont(font)
         title.setTextFormat(Qt.TextFormat.PlainText)
         title.setWordWrap(True)
-        self.notes = QLabel("\n".join(table.notes))
+        notes = list(table.notes)
+        if "run" in table.columns:
+            notes.append("Double-click a row to open its run.")
+        self.notes = QLabel("\n".join(notes))
         self.notes.setTextFormat(Qt.TextFormat.PlainText)
         self.notes.setWordWrap(True)
-        self.notes.setVisible(bool(table.notes))
+        self.notes.setVisible(bool(notes))
         self.grid = QTableWidget(len(table.rows), len(table.columns))
         self.grid.setHorizontalHeaderLabels(table.columns)
         self.grid.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.grid.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.grid.cellDoubleClicked.connect(self._row_chosen)
         self.grid.verticalHeader().setVisible(False)
         self.grid.verticalHeader().setDefaultSectionSize(24)
         for r, row in enumerate(table.rows):
@@ -106,6 +113,10 @@ class TablePage(QWidget):
         self.series: list[QScatterSeries] = []
         if table.plot:
             self._add_plot()
+
+    def _row_chosen(self, row: int, _column: int) -> None:
+        if "run" in self.table.columns:  # read from the grid: it may be sorted
+            self.run_requested.emit(self.grid.item(row, self.table.index("run")).text())
 
     def _add_plot(self) -> None:
         self.x_box, self.y_box, self.group_box = QComboBox(), QComboBox(), QComboBox()
@@ -188,6 +199,8 @@ class TablePage(QWidget):
 class Notebook(QTabWidget):
     """Pages as tabs: the 3D view, then one page per result table."""
 
+    run_requested = Signal(object, str)  # the table's path, the name in its column `run`
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setTabsClosable(True)
@@ -231,6 +244,7 @@ class Notebook(QTabWidget):
         table = read_table(Path(path))
         page = TablePage(table)
         page.reload.clicked.connect(lambda: self._reload(page))
+        page.run_requested.connect(lambda name: self.run_requested.emit(table.path, name))
         same = [p for p in self.table_pages() if p.table.path.resolve() == table.path.resolve()]
         if same:
             at = self.indexOf(same[0])

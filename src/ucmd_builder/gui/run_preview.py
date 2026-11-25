@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..profile import executable, load_profile
+from .loading import LoadedRun
 from .molecule_file import Structure
 from .plots import LivePlots
 from .runs import (
@@ -351,6 +352,7 @@ class RunPanel(QWidget):
     cancel_requested = Signal()
     structure = Signal(object)  # the Structure of a molecule file to show
     run_shown = Signal(bool)  # whether there is a run to plot
+    tables_requested = Signal()  # the tables of the run's study
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -371,6 +373,10 @@ class RunPanel(QWidget):
         self.status.setWordWrap(True)
         top = QHBoxLayout()
         top.addWidget(self.status, 1)
+        self.tables_button = QPushButton("Tables of the study")
+        self.tables_button.hide()
+        self.tables_button.clicked.connect(self.tables_requested)
+        top.addWidget(self.tables_button)
         top.addWidget(self.cancel_button)
         layout = QVBoxLayout(self)
         layout.addLayout(top)
@@ -409,6 +415,7 @@ class RunPanel(QWidget):
         self.structures = []
         self.structure_box.hide()
         self.playback.hide()
+        self.tables_button.hide()
         self.plots.show()
         thermo = outputs.thermo if outputs is not None else None
         path = outputs.trajectory if outputs is not None else None
@@ -485,13 +492,7 @@ class RunPanel(QWidget):
         if self.outputs is None:
             return
         if self.tail is not None and self.tail.poll():
-            self.plots.update_from(self.tail)
-            steps = self.tail.column("step")
-            temperature = self.tail.column("temperature_K")
-            text = f"step {int(steps[-1])} of {self.outputs.steps}"
-            if len(temperature):
-                text += f", T = {temperature[-1]:.1f} K"
-            self.status.setText(f"{self._prefix}{text}")
+            self._tail_changed()
         if self.frames is not None:
             try:
                 new = self.frames.poll()
@@ -507,6 +508,15 @@ class RunPanel(QWidget):
             if self.frames is None:
                 self._load_trajectory()
 
+    def _tail_changed(self) -> None:
+        self.plots.update_from(self.tail)
+        steps = self.tail.column("step")
+        temperature = self.tail.column("temperature_K")
+        text = f"step {int(steps[-1])} of {self.outputs.steps}"
+        if len(temperature):
+            text += f", T = {temperature[-1]:.1f} K"
+        self.status.setText(f"{self._prefix}{text}")
+
     _prefix = ""
 
     def end(self, message: str) -> None:
@@ -518,16 +528,24 @@ class RunPanel(QWidget):
         if self.frames is None:
             self._load_trajectory()
 
-    def show_run(self, outputs: RunOutputs) -> None:
+    def show_run(self, loaded: LoadedRun) -> None:
         """A run opened from disk: finished, stopped, or still going (then it is followed)."""
+        outputs = loaded.outputs
         self._reset(outputs)
+        self.tail, self.frames = loaded.tail, loaded.frames
         self.cancel_button.setEnabled(False)
         self._prefix = f"{outputs.title} ({outputs.run_dir.name}): "
         self.status.setText(f"{self._prefix}no thermo table yet")
-        self.poll()
+        if self.tail is not None and len(self.tail):
+            self._tail_changed()
+        if loaded.problem:
+            self.status.setText(f"{self.status.text()}; {loaded.problem}")
+        if loaded.trajectory is not None and len(loaded.trajectory):
+            self._show(loaded.trajectory)
+            if self.frames is None:  # a finished H5MD run starts at its first frame
+                self.slider.setValue(0)
+                self.show_frame(0)
         if self.complete():
-            if self.frames is None:
-                self._load_trajectory()
             return
         # Not at its last step: still running elsewhere, or stopped. Keep reading; H5MD frames
         # follow once the run has ended.
@@ -572,10 +590,17 @@ class RunPanel(QWidget):
     def show_frame(self, k: int) -> None:
         if self.trajectory is None or not 0 <= k < len(self.trajectory):
             return
+        try:
+            positions = self.trajectory.positions_nm[k]
+        except (OSError, KeyError, ValueError) as e:  # never an older frame under a new number
+            self._player.stop()
+            self.play_button.setText("Play")
+            self.frame_label.setText(f"frame {k + 1} not readable: {e}")
+            return
         labels = self.trajectory.labels
         what = labels[k] if labels is not None else f"{self.trajectory.times_ps[k]:.3f} ps"
         self.frame_label.setText(f"frame {k + 1}/{len(self.trajectory)}, {what}")
-        self.frame.emit(self.trajectory.positions_nm[k], self.trajectory.cell(k))
+        self.frame.emit(positions, self.trajectory.cell(k))
 
     def toggle_play(self) -> None:
         if self._player.isActive():

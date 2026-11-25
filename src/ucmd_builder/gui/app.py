@@ -11,6 +11,7 @@ from __future__ import annotations
 import locale
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import shiboken6
@@ -39,9 +40,12 @@ from .build_worker import BuildWorker, start_build
 from .components import ComponentsPanel
 from .composition import CompositionDialog
 from .document import RecipeDocument
+from .loading import LoadedRun, LoadThread, load_run
 from .molecule_file import MoleculeFileError, read_structures
 from .notebook import Notebook
 from .panels import LogPanel, PropertiesPanel
+from .project import find_runs, find_workspace, read_study, study_of, study_tables
+from .project_panel import ProjectPanel
 from .ruler import RulerPanel
 from .run_preview import RunBrowser, RunController, RunDialog, RunPanel, write_run
 from .runs import RunInfo, RunSettings, new_run_dir, preview_cutoff, run_outputs, scan_runs
@@ -84,6 +88,9 @@ class MainWindow(QMainWindow):
     ) -> None:
         super().__init__(parent)
         self.settings = settings if settings is not None else Settings()
+        self.background = False  # whether runs are read in a thread (run_app; tests wait)
+        self._asked = 0
+        self._loaders: list[LoadThread] = []
         use_c_numeric_locale()  # also when someone else created the QApplication
         self.document = RecipeDocument(self)
         self.viewer = viewer if viewer is not None else make_qt_viewer(self)
@@ -125,7 +132,13 @@ class MainWindow(QMainWindow):
         self.log = LogPanel()
         self.properties = PropertiesPanel()
         self.components = ComponentsPanel(self.document)
+        self.project = ProjectPanel()
+        self.project_dock = self._dock("Project", self.project, "left")
+        self.project.open_requested.connect(lambda path: self.open_by_user([path]))
+        self.project.root_chosen.connect(self.set_workspace)
         self.components_dock = self._dock("Components", self.components, "left")
+        self.notebook.run_requested.connect(self.open_run_of_table)
+        self.run_panel.tables_requested.connect(self.open_tables_of_study)
         self.properties_dock = self._dock("Properties", self.properties, "right")
         self.ruler = RulerPanel()
         self.ruler_dock = self._dock("Ruler", self.ruler, "right")
@@ -154,6 +167,8 @@ class MainWindow(QMainWindow):
         self._size_docks()
         self.setAcceptDrops(True)
         self._restore_layout()
+        if self.settings.workspace:
+            self.project.set_root(self.settings.workspace)
         if self.settings.problem:
             self.log.warn(self.settings.problem)
 
@@ -175,6 +190,9 @@ class MainWindow(QMainWindow):
     def _size_docks(self) -> None:
         self.resizeDocks(
             [self.components_dock, self.ruler_dock], [240, 300], Qt.Orientation.Horizontal
+        )
+        self.resizeDocks(
+            [self.project_dock, self.components_dock], [400, 300], Qt.Orientation.Vertical
         )
         self.resizeDocks([self.log_dock], [110], Qt.Orientation.Vertical)
 
@@ -416,6 +434,40 @@ class MainWindow(QMainWindow):
             return
         self.open_paths(paths)
 
+    def set_workspace(self, path: Path | str) -> None:
+        self.settings.workspace = str(Path(path).resolve())
+        self.settings.save()
+        self.project.set_root(self.settings.workspace)
+
+    def _guess_workspace(self, path: Path) -> None:
+        """The first time something inside a workspace is opened, show that workspace."""
+        if self.project.root is None:
+            found = find_workspace(path)
+            if found is not None:
+                self.set_workspace(found)
+
+    def open_run_of_table(self, table: Path, name: str) -> bool:
+        """The run named in a table's column `run`, from the study the table belongs to."""
+        study = study_of(table)
+        if study is None:
+            self.log.warn(f"{table.name} does not belong to a study: no run {name!r}")
+            return False
+        runs = find_runs(study, name)
+        if not runs:
+            self.log.warn(f"no run {name!r} in {study.name} (it may belong to another study)")
+            return False
+        chosen = runs[0] if len(runs) == 1 else self.choose_run(study / "runs", runs)
+        if chosen is None:
+            return False
+        self.open_by_user([chosen.run_dir])
+        return True
+
+    def open_tables_of_study(self) -> None:
+        if self.run_dir is not None:
+            study = study_of(self.run_dir)
+            if study is not None:
+                self.open_tables(list(study_tables(study)))
+
     @staticmethod
     def _is_recipe(path: Path) -> bool:
         return path.suffix == ".toml" and path.name != "run.toml"
@@ -518,6 +570,7 @@ class MainWindow(QMainWindow):
 
     def show_scene(self, scene: Scene) -> None:
         self.scene = scene
+        self._asked += 1  # a run still loading would replace what is shown now: it is dropped
         self._late_frame = None
         self.ruler.set_scene(scene)
         self.notebook.show_fixed()
@@ -547,13 +600,16 @@ class MainWindow(QMainWindow):
         except (OSError, ValueError, KeyError) as e:
             self.log.warn(f"cannot open package {path}: {e}")
             return False
+        self._show_package(Path(path), scene)
+        return True
+
+    def _show_package(self, path: Path, scene: Scene) -> None:
         self.built = None
         self.run_panel.close_structures()
-        self.package_path = Path(path)
+        self.package_path = path
         self.show_scene(scene)
-        self._set_shown(f"{self.package_path.name} · {scene.n_atoms} atoms")
+        self._set_shown(f"{path.name} · {scene.n_atoms} atoms")
         self.log.add(f"opened package {path}: {scene.n_atoms} atoms (read-only)")
-        return True
 
     def export_package(self, path: Path | str, overwrite: bool = False) -> Path | None:
         """Write the built system as a validated package, and the recipe next to it."""
@@ -674,40 +730,66 @@ class MainWindow(QMainWindow):
             if chosen is None:
                 return False
             path = chosen.run_toml
+        if self.background:
+            self._start_loading(path)
+            return True
         try:
-            outputs = run_outputs(path)
-        except (OSError, ValueError) as e:
+            loaded = load_run(path)
+        except (OSError, ValueError, KeyError) as e:
             self.log.warn(f"cannot open run: {e}")
             return False
-        if not outputs.system.is_dir():
-            self.log.warn(
-                f"cannot open run {path}: its package {outputs.system} does not exist "
-                "(for a GUI run: did the minimization finish?)"
-            )
-            return False
-        if not self.open_package(outputs.system):
-            return False
+        return self._show_loaded(loaded)
+
+    def _start_loading(self, path: Path) -> None:
+        """Read the run in a thread; the last one asked for is shown."""
+        self._asked += 1
+        thread = LoadThread(path, self._asked, self)
+        thread.loaded.connect(self._loaded)
+        thread.failed.connect(self._load_failed)
+        thread.finished.connect(lambda: self._loaders.remove(thread))
+        self._loaders.append(thread)
+        self.statusBar().showMessage(f"opening {path} …")
+        thread.start()
+
+    def is_loading(self) -> bool:
+        return bool(self._loaders)
+
+    def _loaded(self, asked: int, loaded: LoadedRun) -> None:
+        if asked == self._asked and not self.is_running():
+            self._show_loaded(loaded)
+
+    def _load_failed(self, asked: int, path: str, reason: str) -> None:
+        self.settings.forget(path)
+        if asked == self._asked:
+            self.log.warn(f"cannot open run: {reason}")
+
+    def _show_loaded(self, loaded: LoadedRun) -> bool:
+        outputs = loaded.outputs
+        self._show_package(outputs.system, loaded.scene)
         self.run_dir = outputs.run_dir
         self._set_shown(outputs.title)
-        self.run_panel.show_run(outputs)
-        trajectory = self.run_panel.trajectory
-        if trajectory is not None and len(trajectory) and self.scene is not None:
-            if trajectory.positions_nm.shape[1] != self.scene.n_atoms:
+        playable = True
+        if loaded.trajectory is not None and len(loaded.trajectory):
+            atoms = loaded.trajectory.positions_nm.shape[1]
+            if atoms != loaded.scene.n_atoms:
+                playable = False
+                loaded = replace(loaded, trajectory=None, frames=None)
                 self.log.warn(
-                    f"the trajectory has {trajectory.positions_nm.shape[1]} atoms, the package "
+                    f"the trajectory has {atoms} atoms, the package "
                     f"{self.scene.n_atoms}: not played"
                 )
-                self.run_panel.trajectory = None
-                self.run_panel.slider.setEnabled(False)
-                self.run_panel.play_button.setEnabled(False)
-                return False
+        self.run_panel.show_run(loaded)
+        study = study_of(outputs.run_dir)
+        has_tables = study is not None and bool(study_tables(study))
+        self.run_panel.tables_button.setVisible(has_tables)
+        trajectory = self.run_panel.trajectory
         frames = len(trajectory) if trajectory is not None else 0
         rows = len(self.run_panel.tail) if self.run_panel.tail is not None else 0
         following = "; following it while it grows" if self.run_panel.following else ""
         self.log.add(
             f"opened run {outputs.run_dir}: {rows} thermo rows, {frames} frames{following}"
         )
-        return True
+        return playable
 
     def open_molecules(self, paths: list[Path | str]) -> bool:
         """Show molecule files (XYZ): structures to look at, never to run or export."""
@@ -750,6 +832,23 @@ class MainWindow(QMainWindow):
             self.log.add(f"opened table {path}: {len(page.table.rows)} rows")
         return ok
 
+    def open_study(self, path: Path) -> bool:
+        """Show a study: its place in the project panel, and its tables."""
+        study = read_study(path)
+        workspace = find_workspace(path)
+        root = workspace if workspace is not None else path
+        if self.project.root is None or not path.resolve().is_relative_to(self.project.root):
+            self.set_workspace(root)
+        else:
+            self.project.refresh()
+        self.project_dock.show()
+        item = self.project.item(f"study/{study.name}")
+        if item is not None:
+            item.setExpanded(True)
+            self.project.tree.setCurrentItem(item)
+        self.log.add(f"opened study {study.name}: {len(study.runs)} runs, {study.done} complete")
+        return self.open_tables(list(study.tables)) if study.tables else True
+
     def open_paths(self, paths: list[Path]) -> None:
         """Open everything named on the command line; molecule files together, as one list."""
         molecules = [p for p in paths if p.suffix == ".xyz"]
@@ -770,8 +869,11 @@ class MainWindow(QMainWindow):
         if path.is_file() and path.suffix not in (".toml", ".xyz", ".tsv"):
             self.log.warn(f"cannot open {path}: not a recipe, run, molecule file or table")
             return False
+        self._guess_workspace(path)
         if path.suffix == ".tsv" and path.is_file():
             return self.open_tables([path])
+        if (path / "study.toml").is_file():
+            return self.open_study(path)
         if path.is_dir() and not (path / "run.toml").is_file():
             tables = sorted(p for p in path.glob("*.tsv") if is_table(p))
             if tables:
@@ -812,6 +914,8 @@ class MainWindow(QMainWindow):
             process = self.run.process
             self.run.cancel()
             process.waitForFinished(15_000)
+        for thread in list(self._loaders):
+            thread.wait(10_000)
         self._keep_layout()
         event.accept()
 
@@ -820,7 +924,10 @@ def run_app(argv: list[str]) -> int:
     app = QApplication.instance() or QApplication(sys.argv[:1])
     use_c_numeric_locale()
     window = MainWindow(settings=Settings.load(default_settings_path()))
+    window.background = True
     window.open_paths([Path(a) for a in argv])
+    if window.project.root is None:
+        window._guess_workspace(Path.cwd())
     window.fit_to_screen()
     window.show()
     return app.exec()

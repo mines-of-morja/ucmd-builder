@@ -11,6 +11,8 @@ from pathlib import Path
 
 import numpy as np
 
+BLOCK = 4000  # lines parsed at once: other threads get their turn in between
+
 
 class ThermoTail:
     """The rows of `path` read so far; `poll()` adds the lines written since the last call."""
@@ -18,7 +20,7 @@ class ThermoTail:
     def __init__(self, path: Path | str) -> None:
         self.path = Path(path)
         self.names: list[str] = []
-        self._rows: list[list[float]] = []
+        self._blocks: list[np.ndarray] = []
         self._offset = 0
         self._partial = b""
 
@@ -29,38 +31,64 @@ class ThermoTail:
         except FileNotFoundError:
             return 0
         if size < self._offset:  # truncated, e.g. by a restart: read again from the start
-            self.names, self._rows, self._offset, self._partial = [], [], 0, b""
+            self.names, self._blocks, self._offset, self._partial = [], [], 0, b""
         with self.path.open("rb") as fh:
             fh.seek(self._offset)
             data = fh.read()
         self._offset += len(data)
         lines = (self._partial + data).split(b"\n")
         self._partial = lines.pop()  # empty if the data ended with a newline
-        added = 0
-        for raw in lines:
-            line = raw.decode("utf-8")
-            if line.startswith("#"):
-                self.names = line.lstrip("# ").split("\t")
-                continue
-            parts = line.split("\t")
-            if not self.names or len(parts) != len(self.names):
-                continue
+        added, rows = 0, []
+        for line in lines:
+            if line.startswith(b"#"):
+                added += self._add(rows)
+                rows = []
+                self.names = line.decode("utf-8").lstrip("# ").split("\t")
+            else:
+                rows.append(line)
+                if len(rows) == BLOCK:
+                    added += self._add(rows)
+                    rows = []
+        return added + self._add(rows)
+
+    def _add(self, lines: list[bytes]) -> int:
+        """The rows among these lines: the right number of columns, all of them numbers."""
+        if not lines or not self.names:
+            return 0
+        width = len(self.names)
+        if all(line.count(b"\t") == width - 1 for line in lines):
             try:
-                self._rows.append([float(p) for p in parts])
+                block = np.array(b"\t".join(lines).split(b"\t"), dtype=float).reshape(-1, width)
             except ValueError:
-                continue
-            added += 1
-        return added
+                block = self._row_by_row(lines, width)
+        else:
+            block = self._row_by_row(lines, width)
+        if len(block):
+            self._blocks.append(block)
+        return len(block)
+
+    @staticmethod
+    def _row_by_row(lines: list[bytes], width: int) -> np.ndarray:
+        rows = []
+        for line in lines:
+            parts = line.split(b"\t")
+            if len(parts) == width:
+                try:
+                    rows.append([float(p) for p in parts])
+                except ValueError:
+                    continue
+        return np.array(rows).reshape(-1, width)
 
     def __len__(self) -> int:
-        return len(self._rows)
+        return sum(len(b) for b in self._blocks)
 
     def column(self, name: str) -> np.ndarray:
         """All values of a column so far (empty if the column does not exist)."""
-        if name not in self.names:
+        if name not in self.names or not self._blocks:
             return np.empty(0)
-        k = self.names.index(name)
-        return np.array([row[k] for row in self._rows])
+        if len(self._blocks) > 1:
+            self._blocks = [np.concatenate(self._blocks)]
+        return self._blocks[0][:, self.names.index(name)]
 
 
 # Columns that an engine may leave without a value ("nan") in some rows: the OpenMM bridge

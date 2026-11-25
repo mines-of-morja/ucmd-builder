@@ -14,11 +14,9 @@ A summary line under the tabs gives means over the second half of the table and 
 
 from __future__ import annotations
 
-from itertools import pairwise
-
 import numpy as np
 from PySide6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
-from PySide6.QtCore import QMargins, QPointF, Qt
+from PySide6.QtCore import QMargins, Qt
 from PySide6.QtGui import QPainter, QPen
 from PySide6.QtWidgets import QLabel, QTabWidget, QVBoxLayout, QWidget
 
@@ -44,12 +42,16 @@ def envelope(x, y) -> tuple[np.ndarray, np.ndarray]:
     n = len(x)
     if n <= MAX_POINTS:
         return x, y
-    edges = np.linspace(0, n, MAX_POINTS // 2, dtype=int)
-    keep = [0, n - 1]
-    for lo, hi in pairwise(edges):
-        part = y[lo:hi]
-        keep += [lo + int(part.argmin()), lo + int(part.argmax())]
-    index = np.unique(keep)
+    stretches = MAX_POINTS // 2 - 2
+    size = n // stretches
+    cut = stretches * size
+    parts = y[:cut].reshape(stretches, size)
+    start = np.arange(stretches) * size
+    keep = [np.array([0, n - 1]), start + parts.argmin(axis=1), start + parts.argmax(axis=1)]
+    if cut < n:
+        keep.append(cut + np.array([y[cut:].argmin(), y[cut:].argmax()]))
+    index = np.sort(np.concatenate(keep))
+    index = index[np.diff(index, prepend=-1) > 0]  # each point once
     return x[index], y[index]
 
 
@@ -73,6 +75,8 @@ class _Chart(QChartView):
         chart.addAxis(self.x_axis, Qt.AlignmentFlag.AlignBottom)
         chart.addAxis(self.y_axis, Qt.AlignmentFlag.AlignLeft)
         self.series: dict[str, QLineSeries] = {}
+        self._pending: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+        self._ranges: dict[str, tuple[float, float, float, float]] = {}  # x and y of a series
 
     def line(self, key: str, name: str, dashed: bool = False) -> QLineSeries:
         series = QLineSeries()
@@ -88,19 +92,48 @@ class _Chart(QChartView):
         return series
 
     def set_data(self, key: str, xs, ys) -> None:
+        """The curve to draw at the next `rescale`."""
         xs, ys = envelope(xs, ys)
-        self.series[key].replace(
-            [QPointF(x, y) for x, y in zip(xs.tolist(), ys.tolist(), strict=True)]
-        )
+        self._pending[key] = (xs, ys)
+        seen = ys[np.isfinite(ys)]
+        self._ranges.pop(key, None)
+        if len(seen):
+            self._ranges[key] = (xs.min(), xs.max(), seen.min(), seen.max())
+
+    def clear(self) -> None:
+        for series in self.series.values():
+            series.clear()
+        self._ranges.clear()
+        self._pending.clear()
 
     def rescale(self) -> None:
-        points = [p for s in self.series.values() for p in s.points()]
-        if not points:
+        """Draw what is new; a chart nobody sees is drawn when it is shown."""
+        if self.isVisible():
+            self.draw()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self.draw()
+
+    def count(self, key: str) -> int:
+        return len(self._pending[key][0]) if key in self._pending else self.series[key].count()
+
+    def draw(self) -> None:
+        """Fit the axes, then draw: in this order every curve is laid out once."""
+        if not self._pending:
             return
-        xs = [p.x() for p in points]
-        ys = [p.y() for p in points if np.isfinite(p.y())]
-        if not ys:
+        for key in self._pending:
+            self.series[key].clear()
+        self._fit_axes()
+        for key, (xs, ys) in self._pending.items():
+            self.series[key].replaceNp(np.ascontiguousarray(xs), np.ascontiguousarray(ys))
+        self._pending.clear()
+
+    def _fit_axes(self) -> None:
+        if not self._ranges:
             return
+        left, right, low, high = zip(*self._ranges.values(), strict=True)
+        xs, ys = (float(min(left)), float(max(right))), (float(min(low)), float(max(high)))
         span = (max(ys) - min(ys)) or abs(max(ys)) or 1.0
         self.x_axis.setRange(min(xs), max(max(xs), min(xs) + 1e-3))
         self.y_axis.setRange(min(ys) - 0.02 * span, max(ys) + 0.02 * span)
@@ -149,8 +182,7 @@ class LivePlots(QWidget):
     def reset(self, target_K: float | None) -> None:
         self.target_K = target_K
         for chart in self.charts:
-            for series in chart.series.values():
-                series.clear()
+            chart.clear()
         self.summary.setText("–")
 
     def update_from(self, tail: ThermoTail) -> None:
@@ -187,7 +219,7 @@ class LivePlots(QWidget):
     def points(self, key: str) -> int:
         for chart in self.charts:
             if key in chart.series:
-                return chart.series[key].count()
+                return chart.count(key)
         return 0
 
 
