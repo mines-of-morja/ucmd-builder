@@ -34,11 +34,13 @@ from .components import ComponentsPanel
 from .composition import CompositionDialog
 from .document import RecipeDocument
 from .molecule_file import MoleculeFileError, read_structures
+from .notebook import Notebook
 from .panels import LogPanel, PropertiesPanel
 from .ruler import RulerPanel
 from .run_preview import RunBrowser, RunController, RunDialog, RunPanel, write_run
 from .runs import RunInfo, RunSettings, new_run_dir, preview_cutoff, run_outputs, scan_runs
 from .scene import Scene, read_package
+from .table_file import TableError, is_table
 from .viewer import Viewer, make_qt_viewer
 
 TITLE = "UnitcellMD builder"
@@ -69,8 +71,10 @@ class MainWindow(QMainWindow):
         self._worker: BuildWorker | None = None
         self.run: RunController | None = None
         self.run_dir: Path | None = None
+        self.notebook = Notebook()
         if isinstance(self.viewer, QWidget):
-            self.setCentralWidget(self.viewer)
+            self.notebook.add_fixed(self.viewer, "3D view")
+        self.setCentralWidget(self.notebook)
         self.log = LogPanel()
         self.properties = PropertiesPanel()
         self.components = ComponentsPanel(self.document)
@@ -138,6 +142,7 @@ class MainWindow(QMainWindow):
         self.act_run = self._action("Run…", self._run_dialog, "Ctrl+R")
         self.act_open_run = self._action("Open run…", self._open_run_dialog)
         self.act_open_molecule = self._action("Open molecule…", self._open_molecule_dialog)
+        self.act_open_tables = self._action("Open tables…", self._open_tables_dialog)
         self.act_images = self._action("Periodic images", self.viewer.show_images, "Ctrl+I")
         self.act_images.setCheckable(True)
         self.act_undo = self.document.undo_stack.createUndoAction(self, "Undo")
@@ -151,6 +156,7 @@ class MainWindow(QMainWindow):
         menu.addAction(self.act_open_package)
         menu.addAction(self.act_open_run)
         menu.addAction(self.act_open_molecule)
+        menu.addAction(self.act_open_tables)
         menu.addAction(self.act_export)
         menu = self.menuBar().addMenu("&Edit")
         menu.addAction(self.act_undo)
@@ -322,6 +328,7 @@ class MainWindow(QMainWindow):
     def show_scene(self, scene: Scene) -> None:
         self.scene = scene
         self.ruler.set_scene(scene)
+        self.notebook.show_fixed()
         self.viewer.show_scene(scene)
         self._update_actions()
 
@@ -545,10 +552,35 @@ class MainWindow(QMainWindow):
         if paths:
             self.open_molecules(paths)
 
+    def open_tables(self, paths: list[Path | str]) -> bool:
+        """Show result tables, each on a page of the notebook."""
+        ok = bool(paths)
+        for path in paths:
+            try:
+                page = self.notebook.add_table(path)
+            except (OSError, TableError) as e:
+                self.log.add(f"cannot open table {path}: {e}")
+                ok = False
+                continue
+            self.log.add(f"opened table {path}: {len(page.table.rows)} rows")
+        return ok
+
+    def _open_tables_dialog(self) -> None:
+        start = str(self.run_dir) if self.run_dir is not None else ""
+        paths, _ = QFileDialog.getOpenFileNames(self, "Open tables", start, "Tables (*.tsv)")
+        if paths:
+            self.open_tables(paths)
+
     def open_path(self, path: Path | str) -> bool:
         """Open what `path` is: a run (run.toml or its folder), a package, a molecule file
-        (.xyz) or a recipe."""
+        (.xyz), a result table (.tsv) or a folder of them, or a recipe."""
         path = Path(path)
+        if path.suffix == ".tsv" and path.is_file():
+            return self.open_tables([path])
+        if path.is_dir() and not (path / "run.toml").is_file():
+            tables = sorted(p for p in path.glob("*.tsv") if is_table(p))
+            if tables:
+                return self.open_tables(tables)
         if path.suffix == ".xyz" and path.is_file():
             return self.open_molecules([path])
         if (path / "system.json").is_file():
