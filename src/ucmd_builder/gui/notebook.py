@@ -73,13 +73,16 @@ class TablePage(QWidget):
         self.grid.setHorizontalHeaderLabels(table.columns)
         self.grid.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.grid.verticalHeader().setVisible(False)
+        self.grid.verticalHeader().setDefaultSectionSize(24)
         for r, row in enumerate(table.rows):
             for c, text in enumerate(row):
                 value = table.number(r, c)
                 empty = value is None and text.lower() in ("", "nan")
                 item = _Cell("–" if empty else text, value)
                 if value is not None:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignRight)
+                    item.setTextAlignment(
+                        Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                    )
                 self.grid.setItem(r, c, item)
         header = self.grid.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)

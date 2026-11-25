@@ -90,6 +90,7 @@ class MainWindow(QMainWindow):
         ruler_dock = self._dock("Ruler", self.ruler, "right")
         self.tabifyDockWidget(properties_dock, ruler_dock)
         properties_dock.raise_()
+        self.ruler_dock, self.run_dock = ruler_dock, run_dock
         self.ruler.changed.connect(self.viewer.highlight)
         self.run_panel.frame.connect(self._show_frame)
         self.run_panel.cancel_requested.connect(self.stop_run)
@@ -538,6 +539,9 @@ class MainWindow(QMainWindow):
         self.package_path = None
         self.run_dir = None
         self.run_panel.show_structures(structures)
+        # no plots to show: the room goes to the ruler
+        self.ruler_dock.raise_()
+        self.resizeDocks([self.ruler_dock, self.run_dock], [500, 300], Qt.Orientation.Vertical)
         files = "file" if len(structures) == 1 else "files"
         frames = sum(len(s.trajectory) for s in structures)
         self.log.add(
@@ -570,6 +574,15 @@ class MainWindow(QMainWindow):
         paths, _ = QFileDialog.getOpenFileNames(self, "Open tables", start, "Tables (*.tsv)")
         if paths:
             self.open_tables(paths)
+
+    def open_paths(self, paths: list[Path]) -> None:
+        """Open everything named on the command line; molecule files together, as one list."""
+        molecules = [p for p in paths if p.suffix == ".xyz"]
+        if molecules:
+            self.open_molecules(molecules)
+        for path in paths:
+            if path not in molecules:
+                self.open_path(path)
 
     def open_path(self, path: Path | str) -> bool:
         """Open what `path` is: a run (run.toml or its folder), a package, a molecule file
@@ -624,7 +637,6 @@ def run_app(argv: list[str]) -> int:
     app = QApplication.instance() or QApplication(sys.argv[:1])
     use_c_numeric_locale()
     window = MainWindow()
-    if argv:
-        window.open_path(Path(argv[0]))
+    window.open_paths([Path(a) for a in argv])
     window.show()
     return app.exec()

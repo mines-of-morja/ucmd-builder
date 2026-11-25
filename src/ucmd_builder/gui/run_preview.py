@@ -380,6 +380,7 @@ class RunPanel(QWidget):
         layout.addWidget(self.plots, 1)
         layout.addLayout(playback)
         layout.addWidget(self.frame_label)
+        layout.addStretch(0)  # takes the room of the plots while they are hidden
         self.tail: ThermoTail | None = None
         self.trajectory: Trajectory | None = None
         self.outputs: RunOutputs | None = None
@@ -424,7 +425,8 @@ class RunPanel(QWidget):
         self.structure_box.blockSignals(True)
         self.structure_box.clear()
         for s in structures:
-            self.structure_box.addItem(f"{s.name} ({s.scene.n_atoms} atoms, {len(s.trajectory)})")
+            frames = f"{len(s.trajectory)} frame{'s' * (len(s.trajectory) != 1)}"
+            self.structure_box.addItem(f"{s.name} ({s.scene.n_atoms} atoms, {frames})")
         self.structure_box.blockSignals(False)
         self.structure_box.setVisible(len(structures) > 1)
         self._structure_chosen(0)

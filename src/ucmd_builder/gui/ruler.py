@@ -95,6 +95,7 @@ class RulerPanel(QWidget):
         self.table.setHorizontalHeaderLabels(("atom", "molecule", "nm", "Å"))
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
+        self.table.verticalHeader().setDefaultSectionSize(22)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         top = QHBoxLayout()
         top.addWidget(self.measure, 1)

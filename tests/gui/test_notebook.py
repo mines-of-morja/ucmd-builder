@@ -153,3 +153,11 @@ def test_a_notebook_without_a_3d_view(qtbot, tables: Path) -> None:
     book.add_table(tables / "runs.tsv")
     book.show_fixed()
     assert book.count() == 1
+
+
+def test_several_paths_from_the_command_line(window, tables: Path, tmp_path: Path) -> None:
+    for k in (1, 2):
+        (tmp_path / f"n{k}.xyz").write_text(cluster_xyz(copies=k))
+    window.open_paths([tables / "runs.tsv", tmp_path / "n1.xyz", tmp_path / "n2.xyz"])
+    assert window.run_panel.structure_box.count() == 2
+    assert [p.table.title for p in window.notebook.table_pages()] == ["Sensitivity"]
