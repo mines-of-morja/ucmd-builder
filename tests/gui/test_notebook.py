@@ -53,20 +53,20 @@ def window(qtbot):
 
 def test_the_first_page_is_the_3d_view_and_stays(window, tables: Path) -> None:
     book = window.notebook
-    assert book.page_titles() == ["3D view"] and book.widget(0) is window.view_page
+    assert book.page_titles() == ["3D view", "Queue"] and book.widget(0) is window.view_page
     assert window.viewer.parentWidget() is window.view_page
     book.close_page(0)
     book.close_page(1)
-    assert book.page_titles() == ["3D view"] and book.count() == 2  # the plots page is hidden
+    assert book.page_titles() == ["3D view", "Queue"] and book.count() == 3  # plots: hidden
     assert window.open_path(tables)
-    book.close_page(2)
-    assert book.page_titles() == ["3D view", "Trends"]
+    book.close_page(book.indexOf(book.table_pages()[0]))
+    assert book.page_titles() == ["3D view", "Trends", "Queue"]
 
 
 def test_every_table_gets_a_page(window, tables: Path) -> None:
     assert window.open_path(tables), window.log.toPlainText()  # the thermo table is left alone
     book = window.notebook
-    assert book.page_titles() == ["3D view", "Sensitivity", "Trends"]
+    assert book.page_titles() == ["3D view", "Sensitivity", "Trends", "Queue"]
     (runs, trends) = book.table_pages()
     assert runs.grid.rowCount() == 4 and runs.notes.text() == "probes, not a fit"
     assert runs.grid.item(1, 0).text() == "zeta" and runs.grid.item(1, 2).text() == "0.31"
@@ -103,7 +103,7 @@ def test_the_same_file_replaces_its_page(window, tables: Path) -> None:
     book.add_table(tables / "trends.tsv")
     (tables / "runs.tsv").write_text(RUNS + "eps\t1.1\t0.6\t1\n")
     book.table_pages()[0].reload.click()
-    assert book.page_titles() == ["3D view", "Sensitivity", "Trends"]
+    assert book.page_titles() == ["3D view", "Sensitivity", "Trends", "Queue"]
     assert book.currentWidget() is book.table_pages()[0]
     assert book.table_pages()[0].grid.rowCount() == 5
 

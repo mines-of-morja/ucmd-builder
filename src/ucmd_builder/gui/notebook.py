@@ -207,11 +207,14 @@ class Notebook(QTabWidget):
         self.setMovable(False)
         self.tabCloseRequested.connect(self.close_page)
         self._fixed: list[QWidget] = []
+        self._last: list[QWidget] = []  # fixed pages that stay behind the tables
 
-    def add_fixed(self, widget: QWidget, title: str) -> None:
-        """A page that cannot be closed."""
+    def add_fixed(self, widget: QWidget, title: str, last: bool = False) -> None:
+        """A page that cannot be closed; `last`: after every table."""
         index = self.addTab(widget, title)
         self._fixed.append(widget)
+        if last:
+            self._last.append(widget)
         for side in (QTabBar.ButtonPosition.LeftSide, QTabBar.ButtonPosition.RightSide):
             self.tabBar().setTabButton(index, side, None)
 
@@ -251,7 +254,7 @@ class Notebook(QTabWidget):
             self.removeTab(at)
             same[0].deleteLater()
         else:
-            at = self.count()
+            at = min((self.indexOf(p) for p in self._last), default=self.count())
         self.insertTab(at, page, table.title)
         self.setTabToolTip(at, str(table.path))
         self.setCurrentIndex(at)

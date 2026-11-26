@@ -15,7 +15,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import shiboken6
-from PySide6.QtCore import QByteArray, Qt, QThread
+from PySide6.QtCore import QByteArray, QEventLoop, Qt, QThread, QTimer
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
@@ -46,6 +46,7 @@ from .notebook import Notebook
 from .panels import LogPanel, PropertiesPanel
 from .project import find_runs, find_workspace, read_study, study_of, study_tables
 from .project_panel import ProjectPanel
+from .queue_page import QueuePage, cpu_jobs
 from .ruler import RulerPanel
 from .run_preview import RunBrowser, RunController, RunDialog, RunPanel, write_run
 from .runs import RunInfo, RunSettings, new_run_dir, preview_cutoff, run_outputs, scan_runs
@@ -124,6 +125,10 @@ class MainWindow(QMainWindow):
         self.notebook.add_fixed(self.view_page, "3D view")
         self.notebook.add_fixed(self.plots_page, "Plots")
         self.notebook.set_page_visible(self.plots_page, False)
+        self.queue_page = QueuePage()
+        self.notebook.add_fixed(self.queue_page, "Queue", last=True)
+        self.queue_page.url_chosen.connect(self.set_queue_url)
+        self.queue_page.run_requested.connect(self.open_run_of_queue)
         self.notebook.currentChanged.connect(self._page_changed)
         self.run_panel.run_shown.connect(
             lambda on: self.notebook.set_page_visible(self.plots_page, on)
@@ -169,6 +174,7 @@ class MainWindow(QMainWindow):
         self._restore_layout()
         if self.settings.workspace:
             self.project.set_root(self.settings.workspace)
+        self.queue_page.set_url(self.settings.queue_url)
         if self.settings.problem:
             self.log.warn(self.settings.problem)
 
@@ -462,6 +468,50 @@ class MainWindow(QMainWindow):
         self.open_by_user([chosen.run_dir])
         return True
 
+    def set_queue_url(self, url: str | None) -> None:
+        self.settings.queue_url = url
+        self.settings.save()
+        self.queue_page.set_url(url)
+
+    def open_run_of_queue(self, study: str, run: str) -> bool:
+        """A run the queue names, if it lies in this workspace (names are only names)."""
+        root = self.project.root
+        if root is None:
+            self.log.warn("choose the workspace folder first (Project panel)")
+            return False
+        base = (root / "studies").resolve()
+        target = (base / study / "runs" / run).resolve()
+        if not target.is_relative_to(base) or not (target / "run.toml").is_file():
+            self.log.warn(f"run {study}/{run} is not in {root} (another machine?)")
+            return False
+        self.open_by_user([target])
+        return True
+
+    def queue_cpu_ok(self) -> bool:
+        """Before a local run: does the queue run a CPU job? Then the user decides."""
+        page = self.queue_page
+        if page.url is None:
+            return True
+        fresh = page.state is not None and time.monotonic() - page.state.received < 30
+        if not fresh:
+            page.fetch()
+            if page.is_asking():  # at most two seconds; the window keeps answering
+                loop = QEventLoop()
+                page.answered.connect(loop.quit)
+                QTimer.singleShot(2000, loop.quit)
+                loop.exec()
+                page.answered.disconnect(loop.quit)
+        if page.state is None or page.problem:
+            self.log.add("the queue did not answer: cannot tell whether its CPU jobs run now")
+            return True
+        busy = cpu_jobs(page.state)
+        if not busy:
+            return True
+        return self.ask(
+            f"The queue runs a CPU job now ({'; '.join(busy)}). A local run shares the cores "
+            "and slows both. Run anyway?"
+        )
+
     def open_tables_of_study(self) -> None:
         if self.run_dir is not None:
             study = study_of(self.run_dir)
@@ -653,6 +703,8 @@ class MainWindow(QMainWindow):
             self._export_dialog()
         if self.package_path is None or self.scene is None:
             self.log.add("build (and export) a system, or open a package, first")
+            return
+        if not self.queue_cpu_ok():
             return
         dialog = RunDialog(self.package_path, self.scene, self.ask, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:

@@ -51,15 +51,15 @@ def finished_run(qtbot, window, package: Path, tmp_path: Path, monkeypatch) -> P
 def test_a_run_has_a_plots_page_and_a_bar_under_the_3d_view(
     qtbot, window, package: Path, tmp_path: Path, monkeypatch
 ) -> None:
-    assert window.notebook.page_titles() == ["3D view"]
+    assert window.notebook.page_titles() == ["3D view", "Queue"]
     assert window.run_panel.playback.isHidden()
     finished_run(qtbot, window, package, tmp_path, monkeypatch)
-    assert window.notebook.page_titles() == ["3D view", "Plots"]
+    assert window.notebook.page_titles() == ["3D view", "Plots", "Queue"]
     playback = window.run_panel.playback
     assert not playback.isHidden() and playback.parentWidget() is window.view_page
     (tmp_path / "c.xyz").write_text(cluster_xyz())
     assert window.open_path(tmp_path / "c.xyz")  # no run: no plots, one frame: no bar
-    assert window.notebook.page_titles() == ["3D view"] and playback.isHidden()
+    assert window.notebook.page_titles() == ["3D view", "Queue"] and playback.isHidden()
 
 
 def test_a_frame_behind_another_page_is_drawn_once_when_it_is_seen(
