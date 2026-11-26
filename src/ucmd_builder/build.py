@@ -30,7 +30,7 @@ from .molecule import MoleculeGraph, from_file, from_smiles
 from .packing import Cancel, PackingError, PackResult, Progress, Structure, insertion
 from .packing import packmol as packmol_driver
 from .packing.checks import min_intermolecular_distance
-from .recipe import Component, Recipe, RecipeError
+from .recipe import Component, PairOverride, Recipe, RecipeError
 
 
 class BuildError(RuntimeError):
@@ -62,6 +62,7 @@ class BuiltSystem:
     velocities_nm_ps: np.ndarray | None
     conventions: Conventions
     provenance: dict[str, Any] = field(default_factory=dict)
+    pair_overrides: tuple[PairOverride, ...] = ()  # spec 0.1.2, checked when written
 
     @property
     def atom_count(self) -> int:
@@ -232,6 +233,17 @@ def build(
                 "one package uses one set (ADR 0008 §3)"
             )
 
+    # pair overrides name package types `<molecule>.<source type>` (package.type_name); check
+    # them before packing, which can take minutes
+    package_types = {f"{m.name}.{a.type}" for m in molecules for a in m.params.atoms}
+    for o in recipe.pair_overrides:
+        unknown = [t for t in o.types if t not in package_types]
+        if unknown:
+            raise BuildError(
+                f"pair_override {list(o.types)}: unknown atom type {unknown[0]!r}; the package "
+                f"has {sorted(package_types)}"
+            )
+
     masses = {m.name: m.mass_amu for m in molecules}
     composition: CompositionResult | None = None
     if recipe.composition is not None:
@@ -341,6 +353,20 @@ def build(
             }
         )
 
+    for o in recipe.pair_overrides:
+        entry = {"what": f"LJ pair override {o.types[0]} – {o.types[1]}", "citation": o.citation}
+        if entry not in citations:
+            citations.append(entry)
+        transforms.append(
+            {
+                "kind": "pair_override",
+                "types": list(o.types),
+                "sigma_nm": o.sigma_nm,
+                "epsilon_kjmol": o.epsilon_kjmol,
+                "citation": o.citation,
+            }
+        )
+
     provenance: dict[str, Any] = {
         "created_by": created_by(),
         "recipe": recipe.text,
@@ -385,6 +411,7 @@ def build(
         velocities,
         conventions,
         provenance,
+        recipe.pair_overrides,
     )
 
 

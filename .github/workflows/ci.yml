@@ -9,7 +9,7 @@ permissions:
 
 env:
   # Umbrella tag whose spec/ (schemas and fixtures) this builder writes and is tested against.
-  UMBRELLA_REF: spec-v0.1.0
+  UMBRELLA_REF: spec-v0.1.2
 
 jobs:
   test:

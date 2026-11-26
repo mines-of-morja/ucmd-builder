@@ -21,8 +21,8 @@ dependencies = [
     "numpy>=1.26",
     "rdkit>=2024.3",
     "tomli-w>=1.0",
-    # The reference validator of the spec version this builder writes (spec v0.1.0).
-    "ucmd-spec @ git+https://github.com/mines-of-morja/UnitcellMD@spec-v0.1.0#subdirectory=spec/validator",
+    # The reference validator of the newest spec version this builder writes (0.1.2, ADR 0015).
+    "ucmd-spec @ git+https://github.com/mines-of-morja/UnitcellMD@spec-v0.1.2#subdirectory=spec/validator",
 ]
 
 [project.optional-dependencies]

@@ -85,10 +85,7 @@ def _cmd_xyz(args: argparse.Namespace) -> int:
 def _cmd_check(args: argparse.Namespace) -> int:
     from ucmd_spec.system import validate_system_package
 
-    from .package import _spec_dir
-
-    with _spec_dir():
-        report = validate_system_package(args.package)
+    report = validate_system_package(args.package)
     for issue in report.issues:
         print(f"{issue.code}  {issue.message}  ({issue.location})")
     print("OK" if report.ok else "INVALID", args.package)

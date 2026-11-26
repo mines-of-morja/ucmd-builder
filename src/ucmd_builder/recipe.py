@@ -90,6 +90,21 @@ class Velocities:
 
 
 @dataclass(frozen=True)
+class PairOverride:
+    """LJ σ and ε for one pair of package atom types, instead of the combination rule.
+
+    Spec 0.1.2 (system-package.md §5.2, ADR 0015). `types` are the prefixed package type names
+    (`EC.t10`, `Li.Li`); `citation` is required: every parameter cites its source.
+    """
+
+    types: tuple[str, str]
+    sigma_nm: float
+    epsilon_kjmol: float
+    citation: str
+    description: str = ""
+
+
+@dataclass(frozen=True)
 class Recipe:
     name: str
     seed: int
@@ -100,6 +115,7 @@ class Recipe:
     box: Box | None = None
     packing: Packing = field(default_factory=Packing)
     velocities: Velocities | None = None
+    pair_overrides: tuple[PairOverride, ...] = ()
     text: str = field(default="", compare=False)
     path: Path | None = field(default=None, compare=False)
 
@@ -169,7 +185,15 @@ def _recipe(doc: dict[str, Any], text: str, path: Path | None) -> Recipe:
         doc,
         "recipe",
         {"format", "version", "name", "seed", "component"},
-        {"description", "forcefield", "composition", "box", "packing", "velocities"},
+        {
+            "description",
+            "forcefield",
+            "composition",
+            "box",
+            "packing",
+            "velocities",
+            "pair_override",
+        },
     )
     if doc["format"] != FORMAT:
         raise RecipeError(f"format must be {FORMAT!r}")
@@ -201,6 +225,15 @@ def _recipe(doc: dict[str, Any], text: str, path: Path | None) -> Recipe:
         velocities = Velocities(
             _positive(doc["velocities"]["temperature_K"], "velocities.temperature_K")
         )
+    overrides = doc.get("pair_override", [])
+    if not isinstance(overrides, list):
+        raise RecipeError("pair_override must be an array of tables: [[pair_override]]")
+    pair_overrides = tuple(_pair_override(t, k) for k, t in enumerate(overrides))
+    seen: set[frozenset[str]] = set()
+    for o in pair_overrides:
+        if frozenset(o.types) in seen:
+            raise RecipeError(f"pair_override repeats the pair {list(o.types)}")
+        seen.add(frozenset(o.types))
     recipe = Recipe(
         name=name,
         seed=seed,
@@ -211,11 +244,39 @@ def _recipe(doc: dict[str, Any], text: str, path: Path | None) -> Recipe:
         box=box,
         packing=packing,
         velocities=velocities,
+        pair_overrides=pair_overrides,
         text=text,
         path=path,
     )
     _check_sizes(recipe)
     return recipe
+
+
+def _pair_override(table: Any, index: int) -> PairOverride:
+    where = f"pair_override[{index}]"
+    if not isinstance(table, Mapping):
+        raise RecipeError(f"{where} must be a table")
+    _keys(table, where, {"types", "sigma_nm", "epsilon_kjmol", "citation"}, {"description"})
+    types = table["types"]
+    if (
+        not isinstance(types, list)
+        or len(types) != 2
+        or not all(isinstance(t, str) and t for t in types)
+    ):
+        raise RecipeError(f"{where}.types must be two atom-type names, got {types!r}")
+    epsilon = table["epsilon_kjmol"]
+    if isinstance(epsilon, bool) or not isinstance(epsilon, int | float) or not epsilon >= 0:
+        raise RecipeError(f"{where}.epsilon_kjmol must be a number ≥ 0, got {epsilon!r}")
+    citation = table["citation"]
+    if not isinstance(citation, str) or not citation.strip():
+        raise RecipeError(f"{where}.citation must say where the values come from")
+    return PairOverride(
+        (types[0], types[1]),
+        _positive(table["sigma_nm"], f"{where}.sigma_nm"),
+        float(epsilon),
+        citation,
+        str(table.get("description", "")),
+    )
 
 
 def _component(table: Any, index: int) -> Component:
@@ -415,6 +476,17 @@ def to_dict(recipe: Recipe) -> dict[str, Any]:
     }
     if recipe.velocities is not None:
         doc["velocities"] = {"temperature_K": recipe.velocities.temperature_K}
+    if recipe.pair_overrides:
+        doc["pair_override"] = [
+            {
+                "types": list(o.types),
+                "sigma_nm": o.sigma_nm,
+                "epsilon_kjmol": o.epsilon_kjmol,
+                "citation": o.citation,
+                **({"description": o.description} if o.description else {}),
+            }
+            for o in recipe.pair_overrides
+        ]
     components = []
     for c in recipe.components:
         mol: dict[str, Any] = {c.molecule.kind: c.molecule.value}
