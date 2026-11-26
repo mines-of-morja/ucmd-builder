@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
@@ -24,6 +25,12 @@ from .runs import RunInfo
 
 PATH = Qt.ItemDataRole.UserRole  # the path a double click opens
 KEY = Qt.ItemDataRole.UserRole + 1  # names the item across refreshes
+
+
+def short_name(name: str) -> str:
+    """`2026-11-24_parameter-sensitivity-1M` → `11-24 parameter-sensitivity-1M`."""
+    m = re.fullmatch(r"\d{4}-(\d\d-\d\d)_(.+)", name)
+    return f"{m[1]} {m[2]}" if m else name
 
 
 def run_state(run: RunInfo) -> str:
@@ -53,6 +60,7 @@ class ProjectPanel(QWidget):
         self.tree.setHeaderHidden(True)
         self.tree.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tree.setExpandsOnDoubleClick(True)
+        self.tree.setTextElideMode(Qt.TextElideMode.ElideMiddle)
         header = self.tree.header()
         header.setStretchLastSection(False)
         header.setMinimumSectionSize(20)
@@ -106,9 +114,9 @@ class ProjectPanel(QWidget):
 
     def _study(self, parent: QTreeWidgetItem, study: Study) -> None:
         top = self._item(
-            parent, study.name, f"{study.done}/{len(study.runs)}", f"study/{study.name}"
+            parent, short_name(study.name), f"{study.done}/{len(study.runs)}", f"study/{study.name}"
         )
-        top.setToolTip(0, study.question or study.name)
+        top.setToolTip(0, f"{study.name}\n{study.question}".strip())
         for table in study.tables:
             self._item(top, table.name, "table", f"table/{table}", table)
         base = study.path / "runs"

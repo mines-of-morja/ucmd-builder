@@ -195,7 +195,7 @@ class MainWindow(QMainWindow):
 
     def _size_docks(self) -> None:
         self.resizeDocks(
-            [self.components_dock, self.ruler_dock], [240, 300], Qt.Orientation.Horizontal
+            [self.project_dock, self.ruler_dock], [300, 300], Qt.Orientation.Horizontal
         )
         self.resizeDocks(
             [self.project_dock, self.components_dock], [400, 300], Qt.Orientation.Vertical

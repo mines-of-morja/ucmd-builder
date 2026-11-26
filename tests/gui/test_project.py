@@ -117,7 +117,8 @@ def test_the_panel_opens_runs_tables_and_files(window, workspace: Path) -> None:
     panel = window.project
     study = workspace / "studies" / "2026-11-24_scan"
     item = panel.item("study/2026-11-24_scan")
-    assert item.text(1) == "2/3" and item.toolTip(0) == "Which one?"
+    assert item.text(0) == "11-24 scan" and item.text(1) == "2/3"
+    assert item.toolTip(0) == "2026-11-24_scan\nWhich one?"
     states = {item.child(k).text(0): item.child(k).text(1) for k in range(item.childCount())}
     assert states["runs.tsv"] == "table" and states["base_s1/T20C"] == "complete"
     assert states["zeta_0.65/T20C"] in ("running? 50 %", "stopped 50 %")
@@ -149,7 +150,7 @@ def test_the_filter_keeps_the_way_to_what_matches(window, workspace: Path) -> No
     panel = window.project
     panel.filter.setText("scan zeta T40")
     shown = {i.text(0) for i in panel._items() if not i.isHidden()}
-    assert shown == {"Studies", "2026-11-24_scan", "zeta_0.65/T40C"}
+    assert shown == {"Studies", "11-24 scan", "zeta_0.65/T40C"}
     panel.filter.setText("")
     assert not any(i.isHidden() for i in panel._items())
 

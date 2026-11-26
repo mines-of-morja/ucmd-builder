@@ -137,8 +137,7 @@ class _Chart(QChartView):
         span = (max(ys) - min(ys)) or abs(max(ys)) or 1.0
         self.x_axis.setRange(min(xs), max(max(xs), min(xs) + 1e-3))
         self.y_axis.setRange(min(ys) - 0.02 * span, max(ys) + 0.02 * span)
-        for axis in (self.x_axis, self.y_axis):
-            axis.applyNiceNumbers()
+        self.y_axis.applyNiceNumbers()  # time keeps its range: the run ends where it ends
 
 
 class LivePlots(QWidget):
