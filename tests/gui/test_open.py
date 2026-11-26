@@ -171,6 +171,8 @@ def test_the_layout_is_kept(qtbot, files, tmp_path: Path) -> None:
     path = tmp_path / "gui.json"
     window = make_window(qtbot, Settings(path=path))
     window.resize(*KEPT)
+    qtbot.wait(50)
+    kept = (window.width(), window.height())  # KEPT, or the window's minimum if that is larger
     window.ruler_dock.close()
     window.log_dock.show()
     window.open_path(files["table"])  # closed with a table in front
@@ -178,7 +180,7 @@ def test_the_layout_is_kept(qtbot, files, tmp_path: Path) -> None:
     assert json.loads(path.read_text())["schema"] == 1
     again = make_window(qtbot, Settings.load(path))
     qtbot.wait(50)
-    assert (again.width(), again.height()) == KEPT
+    assert (again.width(), again.height()) == kept
     assert again.ruler_dock.isHidden() and not again.properties_dock.isHidden()
     assert not again.log_dock.isHidden()
 
