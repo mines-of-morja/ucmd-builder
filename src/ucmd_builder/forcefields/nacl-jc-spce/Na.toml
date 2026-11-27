@@ -1,0 +1,22 @@
+# Na+ for SPC/E water: Joung & Cheatham (2008), Table 5, SPC/E column, as printed (Rmin/2 in Å,
+# epsilon in kcal/mol). Cross-check: Mester & Panagiotopoulos (2015), SI Table I, gives the same
+# ion in sigma and epsilon (kJ/mol, nm).
+name = "Na"
+description = "sodium cation"
+smiles = "[Na+]"
+formal_charge = 1
+atoms = [
+  { name = "Na", element = "Na", type = "Na", charge = 1.0, mass = 22.98976928, xyz = [0.0, 0.0, 0.0] },
+]
+
+[units]
+energy = "kcal/mol"
+length = "angstrom"
+
+[lj]
+Na = { rmin_half = 1.212, epsilon = 0.3526418 }
+
+[[citations]]
+what = "Na+ Lennard-Jones parameters for SPC/E water (Table 5)"
+citation = "I. S. Joung, T. E. Cheatham III, J. Phys. Chem. B 112, 9020 (2008)"
+doi = "10.1021/jp8001614"

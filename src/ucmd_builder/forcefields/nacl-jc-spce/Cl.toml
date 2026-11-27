@@ -1,0 +1,22 @@
+# Cl- for SPC/E water: Joung & Cheatham (2008), Table 5, SPC/E column, as printed (Rmin/2 in Å,
+# epsilon in kcal/mol). Cross-check: Mester & Panagiotopoulos (2015), SI Table I, gives the same
+# ion in sigma and epsilon (kJ/mol, nm).
+name = "Cl"
+description = "chloride anion"
+smiles = "[Cl-]"
+formal_charge = -1
+atoms = [
+  { name = "Cl", element = "Cl", type = "Cl", charge = -1.0, mass = 35.45, xyz = [0.0, 0.0, 0.0] },
+]
+
+[units]
+energy = "kcal/mol"
+length = "angstrom"
+
+[lj]
+Cl = { rmin_half = 2.711, epsilon = 0.0127850 }
+
+[[citations]]
+what = "Cl- Lennard-Jones parameters for SPC/E water (Table 5)"
+citation = "I. S. Joung, T. E. Cheatham III, J. Phys. Chem. B 112, 9020 (2008)"
+doi = "10.1021/jp8001614"

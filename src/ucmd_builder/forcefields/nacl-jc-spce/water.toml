@@ -1,0 +1,39 @@
+# SPC/E water as printed in Berendsen, Grigera, Straatsma (1987), p. 6271: O-H 0.1 nm, H-O-H the
+# tetrahedral angle, charges -0.8476 / +0.4238 e, O-O Lennard-Jones V = (B/r)^12 - (A/r)^6 with
+# A = 0.37122 (kJ/mol)^(1/6) nm and B = 0.3428 (kJ/mol)^(1/12) nm.
+# Rigid: three constraints; the two O-H bonds carry k = 0 and only define connectivity and the
+# exclusions (spec system-package.md 5.2). The H-H constraint is the tetrahedral geometry,
+# 2 * 0.1 nm * sin(acos(-1/3)/2) = 0.1 nm * sqrt(8/3). The coordinates are that geometry.
+name = "water"
+description = "SPC/E rigid water"
+smiles = "O"
+formal_charge = 0
+atoms = [
+  { name = "OW",  element = "O", type = "OW", charge = -0.8476, mass = 15.999, xyz = [0.0, 0.0, 0.0] },
+  { name = "HW1", element = "H", type = "HW", charge = 0.4238,  mass = 1.008,  xyz = [0.816496580927726, 0.5773502691896257, 0.0] },
+  { name = "HW2", element = "H", type = "HW", charge = 0.4238,  mass = 1.008,  xyz = [-0.816496580927726, 0.5773502691896257, 0.0] },
+]
+bonds = [
+  { atoms = [0, 1], form = "harmonic", r0 = 1.0, k = 0.0 },
+  { atoms = [0, 2], form = "harmonic", r0 = 1.0, k = 0.0 },
+]
+constraints = [
+  { atoms = [0, 1], length = 1.0 },
+  { atoms = [0, 2], length = 1.0 },
+  { atoms = [1, 2], length = 1.6329931618554522 },
+]
+
+[units]
+energy = "kJ/mol"
+length = "angstrom"
+harmonic = "k/2"
+
+[lj]
+# A and B in (kJ/mol)^(1/6) nm and (kJ/mol)^(1/12) nm; the [units] length is Å, so x10
+OW = { A = 3.7122, B = 3.428 }
+HW = { sigma = 0.0, epsilon = 0.0 }
+
+[[citations]]
+what = "SPC/E water: geometry, charges, Lennard-Jones A and B (text on p. 6271 and Table I)"
+citation = "H. J. C. Berendsen, J. R. Grigera, T. P. Straatsma, J. Phys. Chem. 91, 6269 (1987)"
+doi = "10.1021/j100308a038"

@@ -1,0 +1,20 @@
+# NaCl in rigid SPC/E water: Joung & Cheatham (2008) ions for SPC/E, Berendsen et al. (1987) water.
+# The model of the NaCl reference calculations (Mester & Panagiotopoulos 2015; Benavides et al. 2016;
+# Cheng 2022), used to test the thermodynamic-factor method (A1.7, target 2). Approved by the author
+# on 2026-11-27 ("add it to the queue", after the NaCl target was proposed with this model).
+name = "nacl-jc-spce"
+family = "SPC/E + Joung-Cheatham"
+version = 1
+description = "Rigid SPC/E water with Joung-Cheatham Na+ and Cl- (SPC/E column), Lorentz-Berthelot."
+licence = "Published values with citation."
+
+[conventions]
+# Joung & Cheatham 2008 fit the ions with Lorentz-Berthelot mixing (Table 1 and text); no 1-4 pairs
+# exist in these molecules.
+combination_rule = "lorentz-berthelot"
+scale_14_lj = 1.0
+scale_14_coulomb = 1.0
+
+[[citations]]
+what = "standard atomic weights of H, O, Na, Cl (masses)"
+citation = "IUPAC/CIAAW, standard atomic weights (2021), conventional values"

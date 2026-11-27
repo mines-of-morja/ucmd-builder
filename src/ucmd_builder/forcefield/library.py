@@ -181,13 +181,8 @@ def _load_template(data_set: DataSet, name: str) -> Template:
     for a in raw_atoms:
         atoms.append(AtomParams(a["name"], a["type"], float(a["charge"]), float(a["mass"])))
         xyz.append([units.length_nm(v) for v in a["xyz"]])
-    lj = {}
-    for type_name, entry in doc.get("lj", {}).items():
-        if "epsilon_over_kB" in entry:
-            epsilon = Units.kelvin_to_kjmol(entry["epsilon_over_kB"])
-        else:
-            epsilon = units.energy_kjmol(entry["epsilon"])
-        lj[type_name] = LJ(units.length_nm(entry["sigma"]), epsilon)
+    lj = {type_name: _lj(entry, units, f"{where}: lj.{type_name}")
+          for type_name, entry in doc.get("lj", {}).items()}  # fmt: skip
     missing = sorted({a.type for a in atoms} - set(lj))
     if missing:
         raise SourceError(f"{where}: no Lennard-Jones parameters for type(s) {missing}")
@@ -236,6 +231,36 @@ def _load_template(data_set: DataSet, name: str) -> Template:
         },
     )
     return Template(data_set, name, doc.get("description", ""), graph, parameters)
+
+
+LJ_FORMS = (
+    {"sigma", "epsilon"},
+    {"sigma", "epsilon_over_kB"},
+    {"rmin_half", "epsilon"},
+    {"A", "B"},
+)
+"""Lennard-Jones entries as sources print them: σ and ε (or ε/k_B); Rmin/2 and ε (AMBER and
+CHARMM tables, e.g. Joung & Cheatham 2008); or the coefficients A and B of
+V = (B/r)¹² − (A/r)⁶ (Berendsen et al. 1987), A in energy^(1/6)·length and B in
+energy^(1/12)·length."""
+
+
+def _lj(entry: Mapping[str, float], units: Units, where: str) -> LJ:
+    keys = set(entry)
+    if keys not in LJ_FORMS:
+        forms = "; ".join(" + ".join(sorted(f)) for f in LJ_FORMS)
+        raise SourceError(f"{where}: Lennard-Jones keys {sorted(keys)}; use one of: {forms}")
+    if "A" in keys:
+        if not (entry["A"] > 0 and entry["B"] > 0):
+            raise SourceError(f"{where}: A and B must be > 0")
+        return LJ(*units.lj_from_ab(entry["A"], entry["B"]))
+    if "epsilon_over_kB" in keys:
+        epsilon = Units.kelvin_to_kjmol(entry["epsilon_over_kB"])
+    else:
+        epsilon = units.energy_kjmol(entry["epsilon"])
+    if "rmin_half" in keys:
+        return LJ(units.sigma_from_rmin_half(entry["rmin_half"]), epsilon)
+    return LJ(units.length_nm(entry["sigma"]), epsilon)
 
 
 def _formal_charges(elements: list[str], total: int) -> list[int]:

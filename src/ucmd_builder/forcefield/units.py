@@ -59,6 +59,17 @@ class Units:
     def energy_kjmol(self, value: float) -> float:
         return clean(float(value) * self.energy)
 
+    def sigma_from_rmin_half(self, rmin_half: float) -> float:
+        """σ in nm from Rmin/2 (AMBER and CHARMM tables): Rmin = 2^(1/6) σ."""
+        return clean(2.0 * float(rmin_half) * self.length / 2.0 ** (1.0 / 6.0))
+
+    def lj_from_ab(self, a: float, b: float) -> tuple[float, float]:
+        """σ (nm) and ε (kJ/mol) from V = (B/r)¹² − (A/r)⁶ (Berendsen et al. 1987), A in
+        energy^(1/6)·length and B in energy^(1/12)·length: 4εσ⁶ = A⁶, 4εσ¹² = B¹²."""
+        a_si = float(a) * self.length * self.energy ** (1.0 / 6.0)
+        b_si = float(b) * self.length * self.energy ** (1.0 / 12.0)
+        return clean(b_si**2 / a_si), clean(a_si**12 / (4.0 * b_si**12))
+
     def bond_k(self, value: float) -> float:
         """Bond force constant → kJ mol⁻¹ nm⁻² in the ½k form."""
         return clean(float(value) * self.harmonic * self.energy / self.length**2)

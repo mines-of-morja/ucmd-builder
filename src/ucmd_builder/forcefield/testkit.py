@@ -135,11 +135,17 @@ def check_parameters(molecule: MoleculeGraph, p: Parameterized) -> Report:
             r.errors.append(f"type {name}: σ = {lj.sigma_nm} nm outside {SIGMA_NM} (units?)")
         if not EPSILON_KJMOL[0] <= lj.epsilon_kjmol <= EPSILON_KJMOL[1]:
             r.errors.append(f"type {name}: ε = {lj.epsilon_kjmol} kJ/mol outside {EPSILON_KJMOL}")
+    lengths = {tuple(sorted(c.atoms)): c.length_nm for c in p.constraints}
     for b in p.bonds:
         r0, k = b.params["r0_nm"], b.params["k_kjmol_nm2"]
         if not BOND_R0_NM[0] <= r0 <= BOND_R0_NM[1]:
             r.errors.append(f"bond {b.atoms}: r0 = {r0} nm outside {BOND_R0_NM} (units?)")
-        if not BOND_K[0] <= k <= BOND_K[1]:
+        rigid = lengths.get(tuple(sorted(b.atoms)))
+        if k == 0.0 and rigid is not None:
+            # a rigid bond: the constraint holds it, the bond only carries connectivity
+            if not math.isclose(r0, rigid, rel_tol=1e-12):
+                r.errors.append(f"bond {b.atoms}: k = 0 with r0 = {r0} nm, constraint {rigid} nm")
+        elif not BOND_K[0] <= k <= BOND_K[1]:
             r.errors.append(f"bond {b.atoms}: k = {k} kJ/mol/nm² outside {BOND_K} (units or ½k?)")
     for a in p.angles:
         theta0, k = a.params["theta0_deg"], a.params["k_kjmol_rad2"]
